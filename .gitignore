@@ -1,4 +1,10 @@
-./data
-./spatial_blocks
+# Data files
+data/
+spatial_blocks/
+
+# Notebook data files
+notebooks/*.kml
+
+# IDE and OS
 .claude/
 .DS_Store
