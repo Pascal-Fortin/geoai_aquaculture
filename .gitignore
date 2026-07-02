@@ -5,6 +5,10 @@ spatial_blocks/
 # Notebook data files
 notebooks/*.kml
 
+# Code
+aquaculture/__pycache__
+aquaculture/tests/__pycache__
+
 # IDE and OS
 .claude/
 .DS_Store
