@@ -48,12 +48,14 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
         a uniform distribution over valid start months is used.
     s2_monthly_dropout : list of float, default=[0.0]*12
         Monthly dropout probabilities for Sentinel-2 bands (10 bands).
-    include_raw_features : bool, default=True
-        Whether to include raw VH and VV bands.
-    include_temporal_statistics : bool, default=True
-        Whether to include temporal statistics (mean, std, min, max, amplitude, slope).
+    include_optical : bool, default=True
+        Whether to include optical features (spectral indices + green, nir, nira, swir1, swir2).
+    include_sar : bool, default=True
+        Whether to include SAR features (VH, VV, VH_VV_ratio, VH_VV_diff).
     include_cross_sensor_features : bool, default=True
         Whether to include cross sensor features (ratios and products of SAR and optical indices).
+    include_temporal_statistics : bool, default=True
+        Whether to include temporal statistics (mean, std, min, max, amplitude, slope).
     include_metadata : bool, default=True
         Whether to include metadata features (window length, start month, etc.).
     """
@@ -65,9 +67,10 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
         window_length_probs: Tuple[float, float, float] = (0.2, 0.5, 0.3),
         start_month_distribution: Optional[List[float]] = None,
         s2_monthly_dropout: List[float] = None,
-        include_raw_features: bool = True,
-        include_temporal_statistics: bool = True,
+        include_optical: bool = True,
+        include_sar: bool = True,
         include_cross_sensor_features: bool = True,
+        include_temporal_statistics: bool = True,
         include_metadata: bool = True,
     ):
         self.simulate_mask = simulate_mask
@@ -75,9 +78,10 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
         self.window_length_probs = window_length_probs
         self.start_month_distribution = start_month_distribution
         self.s2_monthly_dropout = s2_monthly_dropout if s2_monthly_dropout is not None else [0.0] * 12
-        self.include_raw_features = include_raw_features
-        self.include_temporal_statistics = include_temporal_statistics
+        self.include_optical = include_optical
+        self.include_sar = include_sar
         self.include_cross_sensor_features = include_cross_sensor_features
+        self.include_temporal_statistics = include_temporal_statistics
         self.include_metadata = include_metadata
 
         # Internal random generator
@@ -89,31 +93,23 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
 
         # We'll define the feature groups and their names here for consistency
         # Note: The order must match the band order in the data (0:VH, 1:VV, 2:blue, 3:green, 4:nir, 5:nira, 6:re1, 7:re2, 8:re3, 9:red, 10:swir1, 11:swir2)
-        self._raw_feature_names = [
-            "VH",
-            "VV",
-            "blue",
-            "green",
-            "nir",
-            "nira",
-            "re1",
-            "re2",
-            "re3",
-            "red",
-            "swir1",
-            "swir2",
-        ]
-
-        self._spectral_index_names = [
+        self._optical_feature_names = [
             "NDVI",
             "NDWI",
             "MNDWI",
             "NDMI",
             "NDRE2",
             "NDRE3",
+            "green",
+            "nir",
+            "nira",
+            "swir1",
+            "swir2",
         ]
 
         self._sar_feature_names = [
+            "VH",
+            "VV",
             "VH_VV_ratio",
             "VH_VV_diff",
         ]
@@ -205,52 +201,39 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
         """Build output feature names based on configuration."""
         feature_names = []
 
-        # Monthly features (if any groups are included)
-        # We always compute all monthly features, but we only include them in output
-        # based on the configuration flags
-
-        # Raw features
-        if self.include_raw_features:
+        # Optical features (spectral indices + green, nir, nira, swir1, swir2)
+        # These are always included as base features when include_optical=True
+        if self.include_optical:
             for month in range(1, 13):
-                for fname in self._raw_feature_names:
+                for fname in self._optical_feature_names:
                     feature_names.append(f"{fname}_{month:02d}")
 
-        # Spectral indices
-        if self.include_cross_sensor_features or self.include_temporal_statistics:
-            # We need spectral indices for cross features and temporal stats
-            for month in range(1, 13):
-                for fname in self._spectral_index_names:
-                    feature_names.append(f"{fname}_{month:02d}")
-
-        # SAR features
-        if self.include_temporal_statistics or self.include_cross_sensor_features:
-            # We need SAR features for cross features and temporal stats
+        # SAR features (VH, VV, VH_VV_ratio, VH_VV_diff)
+        # These are always included as base features when include_sar=True
+        if self.include_sar:
             for month in range(1, 13):
                 for fname in self._sar_feature_names:
                     feature_names.append(f"{fname}_{month:02d}")
 
-        # Cross sensor features
-        if self.include_cross_sensor_features:
+        # Cross sensor features (only if both optical and SAR are included AND we want cross features)
+        if self.include_cross_sensor_features and self.include_optical and self.include_sar:
             for month in range(1, 13):
                 for fname in self._cross_sensor_feature_names:
                     feature_names.append(f"{fname}_{month:02d}")
 
-        # Temporal statistics
+        # Temporal statistics (computed on all available base features)
         if self.include_temporal_statistics:
             # We need to know what features we have for temporal stats
-            # This depends on what we included above
+            # This includes all base features: optical, SAR, and cross (if enabled)
             temp_feature_names = []
-            # Raw features
-            if self.include_raw_features:
-                temp_feature_names.extend(self._raw_feature_names)
-            # Spectral indices
-            if self.include_cross_sensor_features or self.include_temporal_statistics:
-                temp_feature_names.extend(self._spectral_index_names)
+            # Optical features
+            if self.include_optical:
+                temp_feature_names.extend(self._optical_feature_names)
             # SAR features
-            if self.include_temporal_statistics or self.include_cross_sensor_features:
+            if self.include_sar:
                 temp_feature_names.extend(self._sar_feature_names)
-            # Cross sensor features
-            if self.include_cross_sensor_features:
+            # Cross sensor features (only if both base types are present and we want them)
+            if self.include_cross_sensor_features and self.include_optical and self.include_sar:
                 temp_feature_names.extend(self._cross_sensor_feature_names)
 
             # Now add temporal statistics for each feature
@@ -305,6 +288,16 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
                 window_lengths[i] = wl
                 start_months[i] = sm
                 end_months[i] = em
+
+                # FIRST: Set ALL bands (SAR and S2) to -9999 for months OUTSIDE the window
+                # Months outside window: [0, sm) and (em, 11]
+                X_masked = X.copy()  # We'll move this outside the loop for efficiency
+                for m in range(12):
+                    if m < sm or m > em:
+                        # Set ALL bands (0-11) to -9999 for months outside window
+                        X_masked[i, m, :] = -9999.0
+
+                # SECOND: For months INSIDE the window, apply cloud masking to S2 bands only
                 # Create monthly dropout mask for this sample
                 # Shape (12, 10) for months and bands
                 monthly_dropout_arr = np.array(self.s2_monthly_dropout).reshape((1, 12, 1))
@@ -313,11 +306,9 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
                 # Mask where random >= dropout (keep) else False (mask)
                 mask_12_10 = rands >= monthly_dropout_arr
                 s2_mask[i] = mask_12_10
-            # Apply mask to S2 bands (indices 2-11)
-            X_masked = X.copy()
-            for i in range(n_samples):
-                for m in range(12):
-                    # Where mask is False, set to -9999
+                # Apply mask to S2 bands (indices 2-11) ONLY for months inside window
+                for m in range(sm, em + 1):
+                    # Where mask is False, set S2 bands to -9999
                     X_masked[i, m, 2:12][~s2_mask[i, m]] = -9999.0
         else:
             # No masking simulation: use all months as observed
@@ -329,19 +320,12 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
             # We'll create a dummy mask of all True for consistency
             s2_mask = np.ones((n_samples, 12, 10), dtype=bool)
 
-        # Step 2: Extract raw bands (if included)
-        if self.include_raw_features:
-            raw_features = X_masked  # shape (n_samples, 12, 12)
-            feature_arrays.append(raw_features)
-
-        # Step 3: Compute spectral indices
-        # We need to compute indices for each month using the S2 bands (indices 2-11)
-        # We'll compute them for all samples at once using vectorization.
-        if self.include_cross_sensor_features or self.include_temporal_statistics:
+        # Step 2: Extract optical features (if included)
+        if self.include_optical:
             # Extract S2 bands: shape (n_samples, 12, 10)
+            # Order: Blue, Green, Red, RE1, RE2, RE3, NIR, NarrowNIR, SWIR1, SWIR2
             s2_bands = X_masked[:, :, 2:12]
             # Separate the bands for easier indexing
-            # Order: Blue, Green, Red, RE1, RE2, RE3, NIR, NarrowNIR, SWIR1, SWIR2
             b = s2_bands[:, :, 0]  # Blue
             g = s2_bands[:, :, 1]  # Green
             r = s2_bands[:, :, 2]  # Red
@@ -367,10 +351,13 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
             )
             feature_arrays.append(indices_stack)
 
-        # Step 4: Compute SAR features (VH, VV, ratio, difference)
-        # Note: VH and VV are already in raw features if include_raw_features is True.
-        # We'll compute ratio and difference.
-        if self.include_cross_sensor_features or self.include_temporal_statistics:
+            # Extract specific optical bands (green, nir, nira, swir1, swir2)
+            # Note: We skip blue, red, re1, re2, re3 as requested
+            optical_bands = np.stack([g, nir, nnir, s1, s2], axis=2)  # (n_samples, 12, 5)
+            feature_arrays.append(optical_bands)
+
+        # Step 3: Extract SAR features (VH, VV, ratio, difference) (if included)
+        if self.include_sar:
             vh = X_masked[:, :, 0]  # shape (n_samples, 12)
             vv = X_masked[:, :, 1]  # shape (n_samples, 12)
             # Avoid division by zero: where vv == 0, set ratio to NaN
@@ -378,14 +365,15 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
                 vh_vv_ratio = np.true_divide(vh, vv)
                 vh_vv_ratio[vv == 0] = np.nan
             vh_vv_diff = vh - vv
-            # Stack to shape (n_samples, 12, 2)
-            sar_stack = np.stack([vh_vv_ratio, vh_vv_diff], axis=2)
+            # Stack to shape (n_samples, 12, 4)
+            sar_stack = np.stack([vh, vv, vh_vv_ratio, vh_vv_diff], axis=2)
             feature_arrays.append(sar_stack)
 
-        # Step 5: Compute cross sensor features
-        # We need VH, VV, NDWI, NDVI
-        # We already have vh, vv, ndwi, ndvi from above
-        if self.include_cross_sensor_features:
+        # Step 4: Compute cross sensor features (if both optical and SAR are included)
+        if self.include_cross_sensor_features and self.include_optical and self.include_sar:
+            # We need VH, VV, NDWI, NDVI
+            # We already have vh, vv from SAR processing above
+            # And we have ndwi, ndvi from optical processing above
             # Avoid division by zero: where denominator is 0, set to NaN
             with np.errstate(divide='ignore', invalid='ignore'):
                 vh_ndwi_ratio = np.true_divide(vh, ndwi)
@@ -414,31 +402,32 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
             )
             feature_arrays.append(cross_stack)
 
-        # Step 6: Combine all monthly features
+        # Step 5: Combine all monthly features
         if feature_arrays:
             monthly_features = np.concatenate(feature_arrays, axis=2)  # (n_samples, 12, n_monthly)
         else:
             monthly_features = np.empty((n_samples, 12, 0))
 
-        # Step 7: Compute temporal statistics (if included)
+        # Step 6: Compute temporal statistics (if included)
         if self.include_temporal_statistics and monthly_features.shape[2] > 0:
             # We need to compute statistics for each monthly feature across time (axis=1)
             # We'll determine which features are SAR vs optical for statistics calculation
 
             # Build ignore_nans mask for each monthly feature
             ignore_nans = []
-            # Raw bands (if included)
-            if self.include_raw_features:
-                ignore_nans.extend([False, False] + [True] * 10)  # VV, VH are SAR -> False; rest optical -> True
-            # Spectral indices (if included)
-            if (self.include_cross_sensor_features or self.include_temporal_statistics):
-                ignore_nans.extend([True] * 6)  # All indices are optical
+            # Optical features (if included)
+            if self.include_optical:
+                # Spectral indices (6): all True (ignore NaNs)
+                # Specific optical bands (green, nir, nira, swir1, swir2) (5): all True (ignore NaNs)
+                ignore_nans.extend([True] * 11)  # 6 + 5 = 11 optical features
             # SAR features (if included)
-            if (self.include_cross_sensor_features or self.include_temporal_statistics):
-                ignore_nans.extend([False] * 2)  # SAR features are SAR
+            if self.include_sar:
+                # VH, VV, VH_VV_ratio, VH_VV_diff (4): all False (don't ignore NaNs)
+                ignore_nans.extend([False] * 4)
             # Cross sensor features (if included)
-            if self.include_cross_sensor_features:
-                ignore_nans.extend([True] * 8)  # Treat cross features as optical for now
+            if self.include_cross_sensor_features and self.include_optical and self.include_sar:
+                # 8 cross features: all True (ignore NaNs)
+                ignore_nans.extend([True] * 8)
 
             ignore_nans = np.array(ignore_nans, dtype=bool)
 
@@ -512,7 +501,7 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
             else:
                 feature_arrays = []
 
-        # Step 8: Compute metadata features
+        # Step 7: Compute metadata features
         if self.include_metadata:
             # We have per-sample window_lengths, start_months, end_months
             # Compute n_optical_obs and fraction_optical
@@ -603,7 +592,7 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
         Returns
         -------
         groups : dict
-            Dictionary with keys 'raw', 'temporal', 'sar', 'cross', 'metadata'
+            Dictionary with keys 'sar', 'optical', 'cross', 'temporal', 'metadata', 'other'
             mapping to lists of column indices in the transformed data.
         """
         if self.feature_names_out_ is None:
@@ -611,18 +600,20 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
 
         feature_names = self.feature_names_out_
         groups = {
-            'raw': [],
-            'temporal': [],
             'sar': [],
+            'optical': [],
             'cross': [],
-            'metadata': []
+            'temporal': [],
+            'metadata': [],
+            'other': []
         }
 
         # Precompute sets for faster lookup
-        raw_set = set(self._raw_feature_names)
-        spectral_set = set(self._spectral_index_names)
-        sar_set = set(self._sar_feature_names)
-        cross_set = set(self._cross_sensor_feature_names)
+        sar_set = {"VH", "VV", "VH_VV_ratio", "VH_VV_diff"}
+        optical_set = {"NDVI", "NDWI", "MNDWI", "NDMI", "NDRE2", "NDRE3",
+                      "green", "nir", "nira", "swir1", "swir2"}
+        cross_set = {"VH_NDWI_ratio", "VV_NDWI_ratio", "VH_NDVI_ratio", "VV_NDVI_ratio",
+                    "VH_NDWI_mul", "VV_NDWI_mul", "VH_NDVI_mul", "VV_NDVI_mul"}
         stat_set = set(self._stat_names)
         metadata_set = set(self._metadata_names)
 
@@ -637,23 +628,17 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
             elif len(name) >= 5 and name[-3] == '_' and name[-2:].isdigit() and 1 <= int(name[-2:]) <= 12:
                 prefix = name[:-3]  # Remove the _{MM} suffix
                 month = int(name[-2:])
-                if prefix in raw_set:
-                    groups['raw'].append(i)
-                elif prefix in spectral_set:
-                    # Spectral indices - we'll put them in their own logical group
-                    # but for backward compatibility with existing groupings,
-                    # we'll classify them based on their nature
-                    # Since they're derived from optical bands, they behave like optical features
-                    # For simplicity in this method, we'll put them with cross/features
-                    # but ideally they'd have their own group
-                    groups['cross'].append(i)  # Keeping original classification for now
-                elif prefix in sar_set:
+                if prefix in sar_set:
                     groups['sar'].append(i)
+                elif prefix in optical_set:
+                    groups['optical'].append(i)
                 elif prefix in cross_set:
                     groups['cross'].append(i)
-                # If prefix doesn't match any known type, we ignore it (shouldn't happen)
-            # If we get here, it's an unknown feature type
-            # For safety, we could log a warning, but we'll just skip it for now
+                else:
+                    groups['other'].append(i)
+            # If we get here, it's an unknown feature type (shouldn't happen with current implementation)
+            else:
+                groups['other'].append(i)
 
         return groups
 

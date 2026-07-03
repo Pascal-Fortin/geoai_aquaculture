@@ -20,7 +20,8 @@ def test_basic_functionality():
     fe = AquacultureFeatureEngineer(
         simulate_mask=True,
         random_state=42,
-        include_raw_features=True,
+        include_optical=True,
+        include_sar=True,
         include_temporal_statistics=True,
         include_cross_sensor_features=True,
         include_metadata=True
@@ -107,7 +108,8 @@ def test_config():
     # Test with minimal features
     fe_minimal = AquacultureFeatureEngineer(
         simulate_mask=False,
-        include_raw_features=True,
+        include_optical=True,
+        include_sar=True,
         include_temporal_statistics=False,
         include_cross_sensor_features=False,
         include_metadata=False
@@ -119,7 +121,8 @@ def test_config():
     # Test with maximal features
     fe_maximal = AquacultureFeatureEngineer(
         simulate_mask=False,
-        include_raw_features=True,
+        include_optical=True,
+        include_sar=True,
         include_temporal_statistics=True,
         include_cross_sensor_features=True,
         include_metadata=True

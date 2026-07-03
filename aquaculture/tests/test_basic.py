@@ -20,9 +20,10 @@ def test_basic_functionality():
     fe = AquacultureFeatureEngineer(
         simulate_mask=True,
         random_state=42,
-        include_raw_features=True,
-        include_temporal_statistics=True,
+        include_optical=True,
+        include_sar=True,
         include_cross_sensor_features=True,
+        include_temporal_statistics=True,
         include_metadata=True
     )
 
@@ -34,12 +35,12 @@ def test_basic_functionality():
     print(f"Training data shape: {X_train.shape}")
     feature_names = fe.get_feature_names_out()
     print(f"Number of feature names: {len(feature_names)}")
-    print(f"Feature names (first 10): {list(feature_names)[:10]}")  # Show first 10
+    print(f"All feature names: {list(feature_names)}")
 
     # Debug: let's see what's in feature_names_out_
     if fe.feature_names_out_ is not None:
         print(f"Number of feature_names_out_: {len(fe.feature_names_out_)}")
-        print(f"First 10 feature_names_out_: {list(fe.feature_names_out_)[:10]}")
+        print(f"All feature_names_out_: {list(fe.feature_names_out_)}")
 
     # Check that we have feature names
     assert fe.feature_names_out_ is not None
@@ -107,7 +108,8 @@ def test_config():
     # Test with minimal features
     fe_minimal = AquacultureFeatureEngineer(
         simulate_mask=False,
-        include_raw_features=True,
+        include_optical=True,
+        include_sar=True,
         include_temporal_statistics=False,
         include_cross_sensor_features=False,
         include_metadata=False
@@ -119,7 +121,8 @@ def test_config():
     # Test with maximal features
     fe_maximal = AquacultureFeatureEngineer(
         simulate_mask=False,
-        include_raw_features=True,
+        include_optical=True,
+        include_sar=True,
         include_temporal_statistics=True,
         include_cross_sensor_features=True,
         include_metadata=True
