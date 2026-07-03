@@ -78,9 +78,9 @@ def _safe_std(arr: np.ndarray, ignore_nans: bool) -> float:
         Standard deviation of the array.
     """
     if ignore_nans:
-        return np.nanstd(arr)
+        return np.nanstd(arr, ddof=1)
     else:
-        return np.std(arr)
+        return np.std(arr, ddof=1)
 
 
 def _safe_min(arr: np.ndarray, ignore_nans: bool) -> float:

@@ -115,7 +115,7 @@ def select_start_month(
             raise ValueError(
                 "start_month_distribution must have length 12 (months Jan-Dec)"
             )
-        _validate_probabilities(start_month_distribution, "start_month_distribution")
+        _validate_probabilities(np.array(start_month_distribution), "start_month_distribution")
         # Only consider valid start months (where window fits within year)
         probs = start_month_distribution[: max_start + 1]
         # Renormalize to sum to 1
@@ -318,19 +318,20 @@ def apply_competition_mask(
         # Create mask for this sample: True for months within window, False outside
         monthly_mask = np.zeros(12, dtype=bool)
         monthly_mask[start_month : end_month + 1] = True
-        # Expand to all bands: shape (12, 12)
-        # We want to mask S2 bands (indices 2-11) outside the window
+        # We want to mask S2 bands (indices 2-11) when they are OUTSIDE the window
         # SAR bands (0-1) are never masked
-        band_mask = np.ones(12, dtype=bool)
-        band_mask[2:] = False  # Only S2 bands subject to window mask
-        # Combine: for each month, if month is outside window AND band is S2 -> mask
-        # We'll create a 2D mask (months, bands)
-        mask_2d = np.tile(monthly_mask[:, np.newaxis], (1, 12)) & np.tile(
-            band_mask[np.newaxis, :], (12, 1)
-        )
-        # Now mask_2d is True where we KEEP the value, False where we mask
-        # Apply to sample
-        masked_data[i][~mask_2d] = -9999.0
+        is_S2_band = np.array([False, False, True, True, True, True, True, True, True, True, True, True])  # True for indices 2-11 (S2 bands)
+        is_outside_window = ~monthly_mask  # True when month is NOT in window
+
+        # Create a 2D mask where True indicates we should apply the mask (set to -9999)
+        # Shape: (12 months, 12 bands)
+        # True when: (month is OUTSIDE window) AND (band is S2)
+        where_to_mask = np.tile(is_outside_window[:, np.newaxis], (1, 12)) & np.tile(is_S2_band[np.newaxis, :], (12, 1))
+
+        # Apply the mask: set values to -9999 where where_to_mask is True
+        # This will set S2 bands to -9999 when they are outside the window
+        # SAR bands (indices 0,1) will never be modified since is_S2_band[0:2] = False
+        masked_data[i][where_to_mask] = -9999.0
 
     metadata = {
         "window_length": window_lengths,
