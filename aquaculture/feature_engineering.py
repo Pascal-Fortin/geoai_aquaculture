@@ -320,6 +320,9 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
             # We'll create a dummy mask of all True for consistency
             s2_mask = np.ones((n_samples, 12, 10), dtype=bool)
 
+        # Convert masking sentinel values (-9999) to NaN for proper handling in downstream computations
+        X_masked[X_masked == -9999.0] = np.nan
+
         # Step 2: Extract optical features (if included)
         if self.include_optical:
             # Extract S2 bands: shape (n_samples, 12, 10)

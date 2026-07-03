@@ -137,9 +137,94 @@ def test_config():
     print("Config test passed!")
 
 
+
+
+def test_cloudy_month_within_window():
+    """Test that a cloudy month inside the window is ignored for optical feature statistics."""
+    # Create deterministic data: one sample, constant values for bands
+    np.random.seed(123)
+    n_samples = 1
+    # Initialize all bands to some baseline value
+    X = np.ones((n_samples, 12, 12), dtype=np.float64) * 0.5  # placeholder
+
+    # Set specific bands for NDVI calculation: NIR (band 8) and Red (band 4) according to band order:
+    # Band order: 0=VH,1=VV,2=Blue,3=Green,4=Red,5=RE1,6=RE2,7=RE3,8=NIR,9=NarrowNIR,10=SWIR1,11=SWIR2
+    # Set Red = 0.2, NIR = 0.8 to get NDVI = 0.6
+    X[:, :, 4] = 0.2   # Red
+    X[:, :, 8] = 0.8   # NIR
+    # Set other S2 bands to some constants (doesn't matter much for NDVI)
+    X[:, :, 2] = 0.1   # Blue
+    X[:, :, 3] = 0.5   # Green
+    X[:, :, 5] = 0.05  # RE1
+    X[:, :, 6] = 0.06  # RE2
+    X[:, :, 7] = 0.07  # RE3
+    X[:, :, 9] = 0.09  # NarrowNIR
+    X[:, :, 10] = 0.10 # SWIR1
+    X[:, :, 11] = 0.11 # SWIR2
+
+    # SAR bands (VH, VV) we can set to constants but we will disable SAR features
+    X[:, :, 0] = 0.3   # VH
+    X[:, :, 1] = 0.4   # VV
+
+    # Configure feature engineer: simulate mask True, window length 4 months starting at month 0 (Jan), 
+    # and make month 1 (Feb) always cloudy for S2 bands.
+    fe = AquacultureFeatureEngineer(
+        simulate_mask=True,
+        random_state=42,
+        window_length_probs=(0.0, 1.0, 0.0),   # always 4 months
+        start_month_distribution=[1.0] + [0.0]*11,  # always start at month 0 (Jan)
+        s2_monthly_dropout=[0.0, 1.0] + [0.0]*10,  # month 1 (Feb) always cloudy (dropout=1.0), others never cloudy
+        include_optical=True,
+        include_sar=False,          # disable SAR to avoid NaN propagation issues
+        include_temporal_statistics=True,
+        include_cross_sensor_features=False,
+        include_metadata=False
+    )
+
+    fe.fit(X)
+    # Transform with training=True to apply masking simulation
+    X_trans = fe.transform(X, training=True)
+
+    # Get feature names
+    feature_names = fe.get_feature_names_out()
+    # Find index of NDVI_mean (since we have temporal statistics)
+    try:
+        ndvi_mean_idx = list(feature_names).index("NDVI_mean")
+    except ValueError:
+        raise AssertionError("NDVI_mean not found in feature names")
+
+    ndvi_mean_val = X_trans.iloc[0, ndvi_mean_idx]
+    # Expected NDVI mean over months 0,2,3 (Jan, Mar, Apr) each NDVI = 0.6 => mean = 0.6
+    expected = 0.6
+    tolerance = 1e-6
+    assert abs(ndvi_mean_val - expected) < tolerance, f"NDVI mean expected {expected}, got {ndvi_mean_val}"
+
+    # Also check that NDVI_std is near zero (since constant)
+    try:
+        ndvi_std_idx = list(feature_names).index("NDVI_std")
+    except ValueError:
+        raise AssertionError("NDVI_std not found")
+    ndvi_std_val = X_trans.iloc[0, ndvi_std_idx]
+    assert abs(ndvi_std_val - 0.0) < tolerance, f"NDVI std expected ~0, got {ndvi_std_val}"
+
+    # Optionally check that NDVI_min and max also 0.6
+    try:
+        ndvi_min_idx = list(feature_names).index("NDVI_min")
+        ndvi_max_idx = list(feature_names).index("NDVI_max")
+    except ValueError:
+        raise AssertionError("NDVI min/max not found")
+    ndvi_min_val = X_trans.iloc[0, ndvi_min_idx]
+    ndvi_max_val = X_trans.iloc[0, ndvi_max_idx]
+    assert abs(ndvi_min_val - expected) < tolerance, f"NDVI min expected {expected}, got {ndvi_min_val}"
+    assert abs(ndvi_max_val - expected) < tolerance, f"NDVI max expected {expected}, got {ndvi_max_val}"
+
+    print("Cloudy month within window test passed!")
+
+
 if __name__ == "__main__":
     print("Testing AquacultureFeatureEngineer...")
     test_basic_functionality()
     test_feature_groups()
     test_config()
+    test_cloudy_month_within_window()
     print("All tests passed!")
