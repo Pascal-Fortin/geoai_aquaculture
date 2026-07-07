@@ -171,7 +171,7 @@ def test_cloudy_month_within_window():
     fe = AquacultureFeatureEngineer(
         simulate_mask=True,
         random_state=42,
-        window_length_probs=(0.0, 1.0, 0.0),   # always 4 months
+        window_length_probs=(1.0, 0.0, 0.0),   # always 4 months
         start_month_distribution=[1.0] + [0.0]*11,  # always start at month 0 (Jan)
         s2_monthly_dropout=[0.0, 1.0] + [0.0]*10,  # month 1 (Feb) always cloudy (dropout=1.0), others never cloudy
         include_optical=True,
