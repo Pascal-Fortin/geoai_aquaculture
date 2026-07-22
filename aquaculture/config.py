@@ -28,8 +28,10 @@ class AquacultureConfig:
     s2_monthly_dropout : list of float, default=[0.0]*12
         Monthly dropout probabilities for Sentinel-2 bands (10 bands).
         Each value should be between 0 and 1.
-    include_raw_features : bool, default=True
-        Whether to include raw VH and VV bands.
+    include_optical : bool, default=True
+        Whether to include optical features (spectral indices + green, nir, nira, swir1, swir2).
+    include_sar : bool, default=True
+        Whether to include SAR features (VH, VV, VH_VV_ratio, VH_VV_diff).
     include_temporal_statistics : bool, default=True
         Whether to include temporal statistics (mean, std, min, max, amplitude, slope).
     include_cross_sensor_features : bool, default=True
@@ -43,7 +45,8 @@ class AquacultureConfig:
     window_length_probs: Tuple[float, float, float] = (1/3, 1/3, 1/3)
     start_month_distribution: Optional[List[float]] = None
     s2_monthly_dropout: List[float] = field(default_factory=lambda: [0.001, 0.037, 0.003, 0.001, 0.001, 0.073, 0.001, 0.009, 0.003, 0.176, 0.007, 0.0])
-    include_raw_features: bool = True
+    include_optical: bool = True
+    include_sar: bool = True
     include_temporal_statistics: bool = True
     include_cross_sensor_features: bool = True
     include_metadata: bool = True
