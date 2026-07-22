@@ -13,3 +13,6 @@ src/__pycache__
 # IDE and OS
 .claude/
 .DS_Store
+
+# Output directories
+experiments/
