@@ -41,7 +41,7 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
         If False, all months are treated as observed.
     random_state : int, np.random.Generator or None, default=None
         Random seed or generator for reproducible random operations.
-    window_length_probs : tuple of float, default=(0.2, 0.5, 0.3)
+    window_length_probs : tuple of float, default=(1/3, 1/3, 1/3)
         Probabilities for window lengths 4, 5, and 6 months.
     start_month_distribution : list of float or None, default=None
         Probability distribution for the start month (0-11). If None,
@@ -64,7 +64,7 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
         self,
         simulate_mask: bool = True,
         random_state: Optional[Union[int, np.random.Generator]] = None,
-        window_length_probs: Tuple[float, float, float] = (0.2, 0.5, 0.3),
+        window_length_probs: Tuple[float, float, float] = (1/3, 1/3, 1/3),
         start_month_distribution: Optional[List[float]] = None,
         s2_monthly_dropout: List[float] = None,
         include_optical: bool = True,

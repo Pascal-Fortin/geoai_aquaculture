@@ -18,7 +18,7 @@ class AquacultureConfig:
         Whether to simulate cloud masking and window selection.
     random_state : int, np.random.Generator or None, default=None
         Random seed or generator for reproducible random operations.
-    window_length_probs : tuple of float, default=(0.2, 0.5, 0.3)
+    window_length_probs : tuple of float, default=(1/3, 1/3, 1/3)
         Probabilities for window lengths 4, 5, and 6 months.
         Must sum to 1.0.
     start_month_distribution : list of float or None, default=None
@@ -40,7 +40,7 @@ class AquacultureConfig:
 
     simulate_mask: bool = True
     random_state: Optional[Union[int, np.random.Generator]] = None
-    window_length_probs: Tuple[float, float, float] = (0.2, 0.5, 0.3)
+    window_length_probs: Tuple[float, float, float] = (1/3, 1/3, 1/3)
     start_month_distribution: Optional[List[float]] = None
     s2_monthly_dropout: List[float] = field(default_factory=lambda: [0.001, 0.037, 0.003, 0.001, 0.001, 0.073, 0.001, 0.009, 0.003, 0.176, 0.007, 0.0])
     include_raw_features: bool = True

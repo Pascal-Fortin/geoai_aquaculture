@@ -71,7 +71,7 @@ def select_window_length(
     Examples
     --------
     >>> rng = np.random.default_rng(42)
-    >>> select_window_length(rng, (0.2, 0.5, 0.3))
+    >>> select_window_length(rng, (1/3, 1/3, 1/3))
     5
     """
     _validate_probabilities(np.array(window_length_probs), "window_length_probs")
