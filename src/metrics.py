@@ -8,7 +8,8 @@ from typing import Dict, Union
 import numpy as np
 from sklearn.metrics import (
     f1_score, roc_auc_score, precision_score, recall_score, accuracy_score,
-    precision_recall_curve, roc_curve, brier_score_loss
+    precision_recall_curve, roc_curve, brier_score_loss,
+    average_precision_score
 )
 
 
@@ -68,6 +69,7 @@ def calculate_metrics(y_true: np.ndarray, y_prob: np.ndarray) -> dict:
         - recall: Recall score
         - accuracy: Accuracy score
         - brier_score: Brier score (lower is better)
+        - pr_auc: Average Precision (Area Under Precision-Recall Curve)
     """
     # Convert probabilities to binary predictions using threshold 0.5
     y_pred = (y_prob >= 0.5).astype(int)
@@ -87,6 +89,13 @@ def calculate_metrics(y_true: np.ndarray, y_prob: np.ndarray) -> dict:
     # Calculate competition score
     comp_score = 0.6 * f1 + 0.4 * roc_auc
 
+    # Calculate average precision (PR-AUC)
+    try:
+        pr_auc = average_precision_score(y_true, y_prob)
+    except ValueError:
+        # This can happen if there's only one class in y_true
+        pr_auc = 0.0
+
     return {
         'competition_score': float(comp_score),
         'f1': float(f1),
@@ -94,7 +103,8 @@ def calculate_metrics(y_true: np.ndarray, y_prob: np.ndarray) -> dict:
         'precision': float(precision),
         'recall': float(recall),
         'accuracy': float(accuracy),
-        'brier_score': float(brier_score)
+        'brier_score': float(brier_score),
+        'pr_auc': float(pr_auc)
     }
 
 
