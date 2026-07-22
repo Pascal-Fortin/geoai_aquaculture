@@ -149,7 +149,6 @@ def create_objective_function(X_train: np.ndarray, y_train: np.ndarray,
             # Create model with suggested parameters
             model = ModelFactory.create(
                 model_type=model_type,
-                random_state=random_state,
                 y_train=y_train,  # For class weighting
                 **params
             )

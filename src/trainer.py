@@ -94,7 +94,7 @@ class Trainer:
             Path to the created experiment directory
         """
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        exp_dir = self.config.experiment_dir / timestamp
+        exp_dir = Path(self.config.experiment_dir) / timestamp
         exp_dir.mkdir(parents=True, exist_ok=True)
 
         # Create subdirectories
@@ -122,7 +122,7 @@ class Trainer:
         Parameters
         ----------
         X : np.ndarray
-            Raw input data of shape (n_samples, 12, 12)
+            Raw input data of shape (n_samples, 12, 12) or (n_samples, 144) for flattened features
         y : np.ndarray
             Target labels
 
@@ -132,6 +132,23 @@ class Trainer:
             (X_features, y) where X_features is the engineered feature matrix
         """
         logger.info("Applying feature engineering...")
+
+        # Convert 2D feature matrix to 3D if needed (12 months * 12 bands = 144)
+        if X.ndim == 2:
+            if X.shape[1] == 144:  # 12 months * 12 bands
+                # Reshape from (n_samples, 144) to (n_samples, 12, 12)
+                # Assuming column order matches: [VH_01, VV_01, ..., swir2_01, VH_02, ..., swir2_12]
+                X = X.reshape((X.shape[0], 12, 12))
+            else:
+                raise ValueError(
+                    f"Expected 2D input with 144 features (12 months × 12 bands), "
+                    f"got {X.shape[1]} features"
+                )
+        elif X.ndim != 3 or X.shape[1] != 12 or X.shape[2] != 12:
+            raise ValueError(
+                f"Input must be 3-dimensional (n_samples, 12, 12) or 2D with 144 features, "
+                f"got shape {X.shape}"
+            )
 
         # Initialize feature engineer if not already done
         if self.feature_engineer is None:
@@ -165,7 +182,7 @@ class Trainer:
         Parameters
         ----------
         X : np.ndarray
-            Feature matrix
+            Raw input data of shape (n_samples, 12, 12) or (n_samples, 144) for flattened features
         y : np.ndarray
             Target labels
 
@@ -185,8 +202,43 @@ class Trainer:
             # Use different random seed for each realization
             self.feature_engineer.random_state = self.config.random_seed + i * 1000
 
-            # Transform data with observation process simulation
-            X_realized = self.feature_engineer.transform(X, training=False)
+            # Prepare data (feature engineering) for this realization
+            # We need to temporarily create a feature engineer with the current settings
+            # to avoid interfering with the main feature_engineer state
+            temp_feature_engineer = AquacultureFeatureEngineer(
+                simulate_mask=True,  # Always simulate for validation realizations
+                random_state=self.config.random_seed + i * 1000,
+                window_length_probs=self.config.feature_engineering_config.window_length_probs,
+                start_month_distribution=self.config.feature_engineering_config.start_month_distribution,
+                s2_monthly_dropout=self.config.feature_engineering_config.s2_monthly_dropout,
+                include_optical=self.config.feature_engineering_config.include_optical,
+                include_sar=self.config.feature_engineering_config.include_sar,
+                include_cross_sensor_features=self.config.feature_engineering_config.include_cross_sensor_features,
+                include_temporal_statistics=self.config.feature_engineering_config.include_temporal_statistics,
+                include_metadata=self.config.feature_engineering_config.include_metadata
+            )
+
+            # Process the data through the temporary feature engineer
+            # This handles both 3D input and 2D input with 144 features
+            if X.ndim == 2:
+                if X.shape[1] == 144:  # 12 months * 12 bands
+                    # Reshape from (n_samples, 144) to (n_samples, 12, 12)
+                    # Assuming column order matches: [VH_01, VV_01, ..., swir2_01, VH_02, ..., swir2_12]
+                    X_processed = X.reshape((X.shape[0], 12, 12))
+                else:
+                    raise ValueError(
+                        f"Expected 2D input with 144 features (12 months × 12 bands), "
+                        f"got {X.shape[1]} features"
+                    )
+            elif X.ndim != 3 or X.shape[1] != 12 or X.shape[2] != 12:
+                raise ValueError(
+                    f"Input must be 3-dimensional (n_samples, 12, 12) or 2D with 144 features, "
+                    f"got shape {X.shape}"
+                )
+
+            # Fit and transform the data with the temporary engineer
+            temp_feature_engineer.fit(X_processed)
+            X_realized = temp_feature_engineer.transform(X_processed, training=False)
             realizations.append((X_realized.values, y))
 
             logger.debug(f"Generated validation realization {i+1}/{self.config.n_validation_realizations}")
@@ -211,7 +263,7 @@ class Trainer:
         Parameters
         ----------
         X : np.ndarray
-            Training data of shape (n_samples, 12, 12)
+            Training data of shape (n_samples, 12, 12) or (n_samples, 144) for flattened features
         y : np.ndarray
             Target labels of shape (n_samples,)
 
@@ -226,37 +278,46 @@ class Trainer:
         # Save configuration
         self._save_config()
 
-        # Prepare data (feature engineering)
-        X_features, y = self._prepare_data(X, y)
-
-        # Store classes for later use
-        self.classes_ = np.unique(y)
-
-        # Log dataset information
-        logger.info(f"Dataset shape: {X_features.shape}")
-        logger.info(f"Class distribution: {np.bincount(y)}")
-
-        # Perform train/validation split for hyperparameter tuning
+        # Perform train/validation split on RAW data for hyperparameter tuning
         from sklearn.model_selection import train_test_split
-        X_train, X_val, y_train, y_val = train_test_split(
-            X_features, y,
+        X_train_raw, X_val_raw, y_train, y_val = train_test_split(
+            X, y,
             test_size=0.2,
             random_state=self.config.random_seed,
             stratify=y
         )
 
-        logger.info(f"Train set: {X_train.shape}, Validation set: {X_val.shape}")
+        # Prepare training data (feature engineering) - fixed seed for consistency
+        X_features_train, _ = self._prepare_data(X_train_raw, y_train)
 
-        # Generate fixed validation realizations
+        # Prepare validation data for realizations (will be processed in _generate_validation_realizations)
+        # Note: _generate_validation_realizations will handle feature engineering with different seeds
+
+        # Prepare features for FULL dataset (needed for final training)
+        X_features_full, _ = self._prepare_data(X, y)
+
+        # Store classes for later use (from full dataset for consistency)
+        self.classes_ = np.unique(y)
+
+        # Log dataset information
+        logger.info(f"Dataset shape: {X_features_full.shape}")
+        logger.info(f"Class distribution: {np.bincount(y)}")
+
+        logger.info(f"Train set: {X_train_raw.shape}, Validation set: {X_val_raw.shape}")
+
+        # Generate fixed validation realizations from RAW validation data
         logger.info(f"Generating {self.config.n_validation_realizations} validation realization(s)...")
-        val_realizations = self._generate_validation_realizations(X_val, y_val)
+        val_realizations = self._generate_validation_realizations(X_val_raw, y_val)
+
+        # Use the first validation realization for hyperparameter optimization
+        X_val_features, _ = val_realizations[0]
 
         # Optimize hyperparameters using Optuna
         logger.info(f"Starting hyperparameter optimization with {self.config.n_trials} trials...")
         self.study, self.best_params = optimize_hyperparameters(
-            X_train=X_train,
+            X_train=X_features_train,
             y_train=y_train,
-            X_val=X_val,  # We'll use the first realization for optimization
+            X_val=X_val_features,  # Use engineered features from first validation realization
             y_val=y_val,
             model_type=self.config.model_type,
             n_trials=self.config.n_trials,
@@ -276,17 +337,16 @@ class Trainer:
         logger.info("Training final model with best parameters...")
         self.model = ModelFactory.create(
             model_type=self.config.model_type,
-            random_state=self.config.random_seed,
             y_train=y,  # Use full dataset for class weighting
             **self.best_params
         )
 
         # Fit on full dataset
-        self.model.fit(X_features, y)
+        self.model.fit(X_features_full, y)
 
         # Evaluate on training data
         train_metrics = evaluate_model_performance(
-            self.model, X_features, y, model_name="Training"
+            self.model, X_features_full, y, model_name="Training"
         )
 
         # Save training metrics
@@ -332,7 +392,7 @@ class Trainer:
         Parameters
         ----------
         X : np.ndarray
-            Input data of shape (n_samples, 12, 12)
+            Input data of shape (n_samples, 12, 12) or (n_samples, 144) for flattened features
 
         Returns
         -------
@@ -341,6 +401,23 @@ class Trainer:
         """
         if self.model is None:
             raise RuntimeError("Model has not been trained yet. Call fit() first.")
+
+        # Convert 2D feature matrix to 3D if needed (12 months * 12 bands = 144)
+        if X.ndim == 2:
+            if X.shape[1] == 144:  # 12 months * 12 bands
+                # Reshape from (n_samples, 144) to (n_samples, 12, 12)
+                # Assuming column order matches: [VH_01, VV_01, ..., swir2_01, VH_02, ..., swir2_12]
+                X = X.reshape((X.shape[0], 12, 12))
+            else:
+                raise ValueError(
+                    f"Expected 2D input with 144 features (12 months × 12 bands), "
+                    f"got {X.shape[1]} features"
+                )
+        elif X.ndim != 3 or X.shape[1] != 12 or X.shape[2] != 12:
+            raise ValueError(
+                f"Input must be 3-dimensional (n_samples, 12, 12) or 2D with 144 features, "
+                f"got shape {X.shape}"
+            )
 
         # Apply feature engineering
         X_features = self.feature_engineer.transform(X, training=False)
@@ -357,7 +434,7 @@ class Trainer:
         Parameters
         ----------
         X : np.ndarray
-            Input data of shape (n_samples, 12, 12)
+            Input data of shape (n_samples, 12, 12) or (n_samples, 144) for flattened features
 
         Returns
         -------
@@ -366,6 +443,23 @@ class Trainer:
         """
         if self.model is None:
             raise RuntimeError("Model has not been trained yet. Call fit() first.")
+
+        # Convert 2D feature matrix to 3D if needed (12 months * 12 bands = 144)
+        if X.ndim == 2:
+            if X.shape[1] == 144:  # 12 months * 12 bands
+                # Reshape from (n_samples, 144) to (n_samples, 12, 12)
+                # Assuming column order matches: [VH_01, VV_01, ..., swir2_01, VH_02, ..., swir2_12]
+                X = X.reshape((X.shape[0], 12, 12))
+            else:
+                raise ValueError(
+                    f"Expected 2D input with 144 features (12 months × 12 bands), "
+                    f"got {X.shape[1]} features"
+                )
+        elif X.ndim != 3 or X.shape[1] != 12 or X.shape[2] != 12:
+            raise ValueError(
+                f"Input must be 3-dimensional (n_samples, 12, 12) or 2D with 144 features, "
+                f"got shape {X.shape}"
+            )
 
         # Apply feature engineering
         X_features = self.feature_engineer.transform(X, training=False)
