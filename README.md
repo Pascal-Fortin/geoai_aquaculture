@@ -64,6 +64,45 @@ See the Jupyter notebooks in the `notebooks/` directory for step-by-step tutoria
 2. **02_model_analysis.ipynb**: Model interpretation and analysis
 3. **03_inference.ipynb**: Making predictions on new data
 
+## Testing
+
+The project includes a test suite to verify functionality. Tests are located in the `tests/` directory.
+
+### Running Tests
+
+To run all tests, execute the following command from the project root:
+
+```bash
+python tests/run_tests.py
+```
+
+Alternatively, you can run individual test files:
+
+```bash
+python -m unittest tests.test_logging
+python -m unittest tests.test_trainer
+python -m unittest tests.test_basic
+```
+
+Or use the built-in test discovery:
+
+```bash
+python -m unittest discover -s tests
+```
+
+The test suite covers:
+- Configuration validation
+- Model factory functionality
+- Metrics calculation
+- Trainer initialization and basic workflow
+- Logging functionality (file and console output)
+
+### Test Structure
+
+- `test_basic.py`: Tests for core utilities and metrics
+- `test_trainer.py`: Tests for the main training pipeline
+- `test_logging.py`: Tests for the configurable logging system
+
 ## Key Features
 
 ### Observation Process Handling
