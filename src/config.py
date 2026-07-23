@@ -42,6 +42,10 @@ class TrainingConfig:
         Base directory for experiment tracking
     feature_engineering_config : AquacultureConfig, optional
         Configuration for the feature engineering pipeline
+    enable_file_logging : bool, default=True
+        Whether to enable file logging to experiment directory
+    log_level_file : str, default='INFO'
+        Logging level for file output (DEBUG, INFO, WARNING, ERROR, CRITICAL)
     """
 
     model_type: str = 'lightgbm'
@@ -54,6 +58,9 @@ class TrainingConfig:
     n_validation_realizations: int = 1
     experiment_dir: Union[str, Path] = 'experiments'
     feature_engineering_config: Optional[AquacultureConfig] = None
+    # Logging configuration options
+    enable_file_logging: bool = True
+    log_level_file: str = 'INFO'
 
     def __post_init__(self):
         """Validate configuration after initialization."""

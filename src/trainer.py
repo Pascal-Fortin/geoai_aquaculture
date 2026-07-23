@@ -87,6 +87,68 @@ class Trainer:
         except ImportError:
             pass  # PyTorch not installed
 
+    def _setup_file_logging(self, log_dir: Path) -> None:
+        """
+        Set up file logging to save logs to the experiment directory.
+
+        Parameters
+        ----------
+        log_dir : pathlib.Path
+            Directory where log files should be saved
+        """
+        # Check if file logging is enabled
+        if not self.config.enable_file_logging:
+            logger.debug("File logging is disabled in configuration")
+            return
+
+        # Create logs directory if it doesn't exist
+        log_dir.mkdir(parents=True, exist_ok=True)
+
+        # Define log file path
+        log_file = log_dir / 'training.log'
+
+        # Configure logging format
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
+        )
+
+        # Get the log level for file logging (default to INFO)
+        try:
+            file_log_level = getattr(logging, self.config.log_level_file.upper())
+        except AttributeError:
+            file_log_level = logging.INFO  # Fallback to INFO if invalid level
+            logger.warning(f"Invalid log level '{self.config.log_level_file}', using INFO")
+
+        # Create file handler
+        file_handler = logging.FileHandler(log_file)
+        file_handler.setLevel(file_log_level)
+        file_handler.setFormatter(formatter)
+
+        # Create console handler (to keep existing console output)
+        import sys
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(logging.INFO)  # Keep console at INFO level
+        console_handler.setFormatter(formatter)
+
+        # Get the root logger and add handlers
+        root_logger = logging.getLogger()
+        root_logger.setLevel(logging.DEBUG)  # Root logger captures all levels
+
+        # Avoid adding duplicate handlers if setup is called multiple times
+        if not any(isinstance(h, logging.FileHandler) for h in root_logger.handlers):
+            root_logger.addHandler(file_handler)
+            logger.info(f"File logging enabled: {log_file} (level: {self.config.log_level_file})")
+
+        if not any(isinstance(h, logging.StreamHandler) and h.stream == sys.stdout
+                   for h in root_logger.handlers):
+            root_logger.addHandler(console_handler)
+
+        # DEBUG: Print handlers info
+        # print(f"[DEBUG] Root logger handlers: {len(root_logger.handlers)}")
+        # for i, h in enumerate(root_logger.handlers):
+        #     print(f"  Handler {i}: {type(h).__name__}, level={h.level}")
+
     def _create_experiment_directory(self) -> Path:
         """
         Create a timestamped experiment directory.
@@ -105,9 +167,15 @@ class Trainer:
         (exp_dir / "features").mkdir(exist_ok=True)
         (exp_dir / "explanations").mkdir(exist_ok=True)
         (exp_dir / "plots").mkdir(exist_ok=True)
-        (exp_dir / "logs").mkdir(exist_ok=True)
+        log_dir = exp_dir / "logs"
+        log_dir.mkdir(exist_ok=True)
 
         self.experiment_dir = exp_dir
+
+        # Set up file logging BEFORE doing any logging we want to capture
+        self._setup_file_logging(log_dir)
+
+        # Now log the creation (this should go to both console and file)
         logger.info(f"Created experiment directory: {exp_dir}")
 
         return exp_dir
