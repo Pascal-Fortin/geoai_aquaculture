@@ -587,9 +587,9 @@ Breakdown:
 - Optical bands: 5 bands × 12 months = 60 features  
 - SAR features: 4 features × 12 months = 48 features
 - Cross-sensor: 8 features × 12 months = 96 features (if enabled)
-- Temporal stats: (72+60+48+96) features × 6 stats = 1,440 features (if enabled)
+- Temporal stats: (6+5+4+8) features × 6 stats = 138 features (if enabled)
 - Metadata: 5 + 12 = 17 features
-Total: 72+60+48+96+1,440+17 = 1,733 features (with temporal stats)
+Total: 72+60+48+96+138+17 = 431 features (with temporal stats)
 ```
 
 Without temporal statistics (disabled):
