@@ -201,11 +201,11 @@ Band ordering (consistent in both formats):
 2: Blue (Sentinel-2 B02)
 3: Green (Sentinel-2 B03)
 4: NIR (Sentinel-2 B08)
-5: NRI (Sentinel-2 B8A)
-6: Red (Sentinel-2 B04)
-7: RE1 (Sentinel-2 B05)
-8: RE2 (Sentinel-2 B06)
-9: RE3 (Sentinel-2 B07)
+5: NIRA (Sentinel-2 B8A)
+6: RE1 (Sentinel-2 B05)
+7: RE2 (Sentinel-2 B06)
+8: RE3 (Sentinel-2 B07)
+9: Red (Sentinel-2 B04)
 10: SWIR1 (Sentinel-2 B11)
 11: SWIR2 (Sentinel-2 B12)
 ```
@@ -602,7 +602,7 @@ Total: 72+60+48+96+17 = 293 features
 **Input**: 
 - Shape: `(n_samples, 12, 12)` or `(n_samples, 144)`
 - Description: Raw satellite timesteps
-- Band order: [VH, VV, blue, green, red, re1, re2, re3, nir, nnir, swir1, swir2]
+- Band order: [VH, VV, blue, green, nir, nira, re1, re2, re3, red, swir1, swir2]
 
 **Processing Steps**:
 1. **Input validation and reshaping** (`trainer.py:_prepare_data()`)
