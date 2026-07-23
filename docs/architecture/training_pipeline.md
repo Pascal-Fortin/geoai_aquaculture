@@ -143,7 +143,7 @@ flowchart TD
 - Simulates partial observations through window selection and cloud masking
 - **Training**: Stochastic window selection (4-6 months) + monthly S2 band dropout
 - **Validation/Test**: Fixed window selection (no stochasticity during Optuna)
-- Implemented in: `masking.py:apply_competition_mask()` lines 238-341
+- Implemented in: `masking.py:apply_competition_mask()` lines 191-248
 
 #### 2.6 Feature Engineering
 - Transforms raw satellite data into engineered features
@@ -197,15 +197,15 @@ Two accepted formats:
 Band ordering (consistent in both formats):
 ```
 0: VH (VH polarization)
-1: VV (VV polarization) 
+1: VV (VV polarization)
 2: Blue (Sentinel-2 B02)
 3: Green (Sentinel-2 B03)
-4: Red (Sentinel-2 B04)
-5: RE1 (Sentinel-2 B05)
-6: RE2 (Sentinel-2 B06)
-7: RE3 (Sentinel-2 B07)
-8: NIR (Sentinel-2 B08)
-9: NNI R (Sentinel-2 B8A)
+4: NIR (Sentinel-2 B08)
+5: NRI (Sentinel-2 B8A)
+6: Red (Sentinel-2 B04)
+7: RE1 (Sentinel-2 B05)
+8: RE2 (Sentinel-2 B06)
+9: RE3 (Sentinel-2 B07)
 10: SWIR1 (Sentinel-2 B11)
 11: SWIR2 (Sentinel-2 B12)
 ```
