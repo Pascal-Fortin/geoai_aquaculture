@@ -413,9 +413,6 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
 
         # Step 6: Compute temporal statistics (if included)
         if self.include_temporal_statistics and monthly_features.shape[2] > 0:
-            # We need to compute statistics for each monthly feature across time (axis=1)
-            # We'll determine which features are SAR vs optical for statistics calculation
-
             # Build ignore_nans mask for each monthly feature
             ignore_nans = []
             # Optical features (if included)
@@ -434,67 +431,22 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
 
             ignore_nans = np.array(ignore_nans, dtype=bool)
 
-            # Now we need to compute statistics for each sample and each feature.
-            n_monthly = monthly_features.shape[2]
-            n_stats = len(self._stat_names)
-            temporal_features = np.zeros((n_samples, n_monthly * n_stats))
+            # Determine which features are SAR vs optical for statistics calculation
+            optical_indices = np.where(ignore_nans)[0]
+            sar_indices = np.where(~ignore_nans)[0]
 
-            for i in range(n_samples):
-                for f in range(n_monthly):
-                    feat_series = monthly_features[i, :, f]  # shape (12,)
-                    ignore_nan_flag = ignore_nans[f]
+            # Compute temporal statistics for all features at once
+            temporal_features = temporal.compute_temporal_stats(
+                monthly_features,
+                sar_indices=sar_indices,
+                optical_indices=optical_indices
+            )   # shape: (n_samples, n_monthly * 6)
 
-                    # Compute each statistic
-                    if ignore_nan_flag:
-                        # For optical features, ignore NaNs
-                        mean_val = np.nanmean(feat_series)
-                        std_val = np.nanstd(feat_series)
-                        min_val = np.nanmin(feat_series)
-                        max_val = np.nanmax(feat_series)
-                    else:
-                        # For SAR features, use all available months (NaN propagates)
-                        mean_val = np.mean(feat_series)
-                        std_val = np.std(feat_series)
-                        min_val = np.min(feat_series)
-                        max_val = np.max(feat_series)
-
-                    amp_val = max_val - min_val if not (np.isnan(min_val) or np.isnan(max_val)) else np.nan
-
-                    # Linear slope
-                    if ignore_nan_flag:
-                        # Use only non-NaN points
-                        valid = ~np.isnan(feat_series)
-                        if np.sum(valid) < 2:
-                            slope_val = np.nan
-                        else:
-                            x = np.where(valid)[0].astype(float)
-                            y = feat_series[valid]
-                            slope_val = np.polyfit(x, y, 1)[0]
-                    else:
-                        if np.any(np.isnan(feat_series)):
-                            slope_val = np.nan
-                        else:
-                            x = np.arange(12, dtype=float)
-                            y = feat_series
-                            slope_val = np.polyfit(x, y, 1)[0]
-
-                    # Store
-                    start_idx = f * n_stats
-                    temporal_features[i, start_idx : start_idx + n_stats] = [
-                        mean_val,
-                        std_val,
-                        min_val,
-                        max_val,
-                        amp_val,
-                        slope_val,
-                    ]
-
-            # Reshape the monthly features to 2D for concatenation with temporal and metadata features
+            # Collapse monthly features to 2D for concatenation
             monthly_features_2d = monthly_features.reshape(n_samples, -1)
 
-            # Replace feature_arrays with the 2D monthly features, then add temporal and metadata
-            feature_arrays = [monthly_features_2d]
-            feature_arrays.append(temporal_features)
+            # Build feature_arrays list
+            feature_arrays = [monthly_features_2d, temporal_features]
         else:
             # If not computing temporal statistics, we still need to use the monthly features
             # Reshape to 2D for concatenation with other features

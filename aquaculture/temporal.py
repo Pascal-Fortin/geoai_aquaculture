@@ -223,45 +223,6 @@ def compute_temporal_stats(
     n_stats = 6  # mean, std, min, max, amplitude, slope
     stats = np.zeros((n_samples, n_features * n_stats))
 
-    # Process each feature
-    for feat_idx in range(n_features):
-        # Determine if this feature is SAR or optical
-        ignore_nans = feat_idx in optical_indices
-        # Extract time series for this feature across all samples
-        # shape: (n_samples, n_timesteps)
-        ts = data[:, :, feat_idx]
-
-        # Compute statistics along time axis (axis=1)
-        # We'll compute for each sample separately to handle per-sample NaN patterns
-        for sample_idx in range(n_samples):
-            series = ts[sample_idx]  # shape (n_timesteps,)
-            # Compute each statistic
-            mean_val = _safe_mean(series, ignore_nans)
-            std_val = _safe_std(series, ignore_nans)
-            min_val = _safe_min(series, ignore_nans)
-            max_val = _safe_max(series, ignore_nans)
-            amp_val = max_val - min_val if not (np.isnan(min_val) or np.isnan(max_val)) else np.nan
-            slope_val = _linear_trend(series, ignore_nans)
-
-            # Store in output array
-            base_idx = feat_idx * n_stats
-            sample_start = sample_idx * (n_features * n_stats)  # Actually we are iterating features inside sample loop? Let's restructure.
-
-    # The above nested loops are inefficient. Let's vectorize where possible.
-    # We'll rewrite using vectorized operations across samples for each statistic.
-    # But for clarity, we'll keep loops over features and samples; the data size is modest.
-    # Let's reimplement with proper indexing.
-
-    # Actually, let's restart the implementation with a clearer approach.
-    # We'll compute statistics for each feature and each sample using apply_along_axis
-    # or list comprehension.
-
-    # Given time, we'll implement a simple but correct version.
-    # We'll loop over samples and features.
-
-    # Re-initialize output
-    stats = np.zeros((n_samples, n_features * n_stats))
-
     for sample_idx in range(n_samples):
         for feat_idx in range(n_features):
             series = data[sample_idx, :, feat_idx]
