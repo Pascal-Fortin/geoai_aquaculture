@@ -61,6 +61,9 @@ class Trainer:
         self.experiment_dir = None
         self.feature_names = None
         self.classes_ = None
+        self._last_X = None
+        self._last_X_features = None
+        self._last_training = None
 
         # Set random seeds for reproducibility
         self._set_random_seeds(config.random_seed)
@@ -115,7 +118,7 @@ class Trainer:
         self.config.save(config_path)
         logger.debug(f"Configuration saved to {config_path}")
 
-    def _prepare_data(self, X: np.ndarray, y: np.ndarray) -> tuple:
+    def _prepare_data(self, X: np.ndarray, y: np.ndarray, training: bool = False) -> tuple:
         """
         Prepare data by applying feature engineering.
 
@@ -125,6 +128,9 @@ class Trainer:
             Raw input data of shape (n_samples, 12, 12) or (n_samples, 144) for flattened features
         y : np.ndarray
             Target labels
+        training : bool, default=False
+            Whether to apply the observation‑process simulation (windowing + masking) during feature transformation.
+            Set to True for training data to enable stochastic window selection and S2‑band dropout.
 
         Returns
         -------
@@ -150,31 +156,41 @@ class Trainer:
                 f"got shape {X.shape}"
             )
 
-        # Initialize feature engineer if not already done
-        if self.feature_engineer is None:
-            self.feature_engineer = AquacultureFeatureEngineer(
-                simulate_mask=self.config.feature_engineering_config.simulate_mask,
-                random_state=self.config.random_seed,
-                window_length_probs=self.config.feature_engineering_config.window_length_probs,
-                start_month_distribution=self.config.feature_engineering_config.start_month_distribution,
-                s2_monthly_dropout=self.config.feature_engineering_config.s2_monthly_dropout,
-                include_optical=self.config.feature_engineering_config.include_optical,
-                include_sar=self.config.feature_engineering_config.include_sar,
-                include_cross_sensor_features=self.config.feature_engineering_config.include_cross_sensor_features,
-                include_temporal_statistics=self.config.feature_engineering_config.include_temporal_statistics,
-                include_metadata=self.config.feature_engineering_config.include_metadata
-            )
+        # Check cache: if same X and training flag as last call, reuse features
+        if (self._last_X is not None and self._last_training == training
+                and X.shape == self._last_X.shape and np.array_equal(self._last_X, X)):
+            logger.debug("Using cached feature matrix.")
+            X_features_df = self._last_X_features
+        else:
+            # Initialize feature engineer if not already done
+            if self.feature_engineer is None:
+                self.feature_engineer = AquacultureFeatureEngineer(
+                    simulate_mask=self.config.feature_engineering_config.simulate_mask,
+                    random_state=self.config.random_seed,
+                    window_length_probs=self.config.feature_engineering_config.window_length_probs,
+                    start_month_distribution=self.config.feature_engineering_config.start_month_distribution,
+                    s2_monthly_dropout=self.config.feature_engineering_config.s2_monthly_dropout,
+                    include_optical=self.config.feature_engineering_config.include_optical,
+                    include_sar=self.config.feature_engineering_config.include_sar,
+                    include_cross_sensor_features=self.config.feature_engineering_config.include_cross_sensor_features,
+                    include_temporal_statistics=self.config.feature_engineering_config.include_temporal_statistics,
+                    include_metadata=self.config.feature_engineering_config.include_metadata
+                )
+                self.feature_engineer.fit(X)
 
-        # Fit and transform the data
-        self.feature_engineer.fit(X)
-        X_features = self.feature_engineer.transform(X, training=False)  # We'll handle observation process separately
+            # Compute features
+            X_features_df = self.feature_engineer.transform(X, training=training)
+
+            # Update cache
+            self._last_X = X.copy()
+            self._last_X_features = X_features_df.copy()
+            self._last_training = training
 
         # Store feature names
-        self.feature_names = list(X_features.columns)
+        self.feature_names = list(X_features_df.columns)
         logger.info(f"Generated {len(self.feature_names)} features")
 
-        return X_features.values, y
-
+        return X_features_df.values, y
     def _generate_validation_realizations(self, X: np.ndarray, y: np.ndarray) -> list:
         """
         Generate fixed validation realizations for consistent evaluation during Optuna.
@@ -230,7 +246,10 @@ class Trainer:
                         f"Expected 2D input with 144 features (12 months × 12 bands), "
                         f"got {X.shape[1]} features"
                     )
-            elif X.ndim != 3 or X.shape[1] != 12 or X.shape[2] != 12:
+            elif X.ndim == 3 and X.shape[1] == 12 and X.shape[2] == 12:
+                # X is already in the correct 3D format
+                X_processed = X
+            else:
                 raise ValueError(
                     f"Input must be 3-dimensional (n_samples, 12, 12) or 2D with 144 features, "
                     f"got shape {X.shape}"
@@ -238,7 +257,7 @@ class Trainer:
 
             # Fit and transform the data with the temporary engineer
             temp_feature_engineer.fit(X_processed)
-            X_realized = temp_feature_engineer.transform(X_processed, training=False)
+            X_realized = temp_feature_engineer.transform(X_processed, training=True)
             realizations.append((X_realized.values, y))
 
             logger.debug(f"Generated validation realization {i+1}/{self.config.n_validation_realizations}")
@@ -288,13 +307,13 @@ class Trainer:
         )
 
         # Prepare training data (feature engineering) - fixed seed for consistency
-        X_features_train, _ = self._prepare_data(X_train_raw, y_train)
+        X_features_train, _ = self._prepare_data(X_train_raw, y_train, training=True)
 
         # Prepare validation data for realizations (will be processed in _generate_validation_realizations)
         # Note: _generate_validation_realizations will handle feature engineering with different seeds
 
         # Prepare features for FULL dataset (needed for final training)
-        X_features_full, _ = self._prepare_data(X, y)
+        X_features_full, _ = self._prepare_data(X, y, training=True)
 
         # Store classes for later use (from full dataset for consistency)
         self.classes_ = np.unique(y)
@@ -385,7 +404,7 @@ class Trainer:
         logger.info("Training completed successfully!")
         return self
 
-    def predict(self, X: np.ndarray) -> np.ndarray:
+    def predict(self, X: np.ndarray, training: bool = False) -> np.ndarray:
         """
         Make predictions on new data.
 
@@ -393,6 +412,9 @@ class Trainer:
         ----------
         X : np.ndarray
             Input data of shape (n_samples, 12, 12) or (n_samples, 144) for flattened features
+        training : bool, default=False
+            Whether to apply the observation‑process simulation (windowing + masking) during feature transformation.
+            Set to True when evaluating on training data to match the conditions used during fitting.
 
         Returns
         -------
@@ -402,32 +424,16 @@ class Trainer:
         if self.model is None:
             raise RuntimeError("Model has not been trained yet. Call fit() first.")
 
-        # Convert 2D feature matrix to 3D if needed (12 months * 12 bands = 144)
-        if X.ndim == 2:
-            if X.shape[1] == 144:  # 12 months * 12 bands
-                # Reshape from (n_samples, 144) to (n_samples, 12, 12)
-                # Assuming column order matches: [VH_01, VV_01, ..., swir2_01, VH_02, ..., swir2_12]
-                X = X.reshape((X.shape[0], 12, 12))
-            else:
-                raise ValueError(
-                    f"Expected 2D input with 144 features (12 months × 12 bands), "
-                    f"got {X.shape[1]} features"
-                )
-        elif X.ndim != 3 or X.shape[1] != 12 or X.shape[2] != 12:
-            raise ValueError(
-                f"Input must be 3-dimensional (n_samples, 12, 12) or 2D with 144 features, "
-                f"got shape {X.shape}"
-            )
-
-        # Apply feature engineering
-        X_features = self.feature_engineer.transform(X, training=False)
-        X_features = X_features.values
+        # Use _prepare_data which handles reshape/validation and feature engineering.
+        # We pass a dummy y array of zeros (length matches X) because _prepare_data expects y,
+        # but we only need the features.
+        X_features, _ = self._prepare_data(X, np.zeros(X.shape[0]), training=training)
+        # X_features is already a numpy array (values) from _prepare_data.
 
         # Make predictions
         predictions = self.model.predict(X_features)
         return predictions
-
-    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+    def predict_proba(self, X: np.ndarray, training: bool = False) -> np.ndarray:
         """
         Predict class probabilities on new data.
 
@@ -435,6 +441,9 @@ class Trainer:
         ----------
         X : np.ndarray
             Input data of shape (n_samples, 12, 12) or (n_samples, 144) for flattened features
+        training : bool, default=False
+            Whether to apply the observation‑process simulation (windowing + masking) during feature transformation.
+            Set to True when evaluating on training data to match the conditions used during fitting.
 
         Returns
         -------
@@ -444,31 +453,15 @@ class Trainer:
         if self.model is None:
             raise RuntimeError("Model has not been trained yet. Call fit() first.")
 
-        # Convert 2D feature matrix to 3D if needed (12 months * 12 bands = 144)
-        if X.ndim == 2:
-            if X.shape[1] == 144:  # 12 months * 12 bands
-                # Reshape from (n_samples, 144) to (n_samples, 12, 12)
-                # Assuming column order matches: [VH_01, VV_01, ..., swir2_01, VH_02, ..., swir2_12]
-                X = X.reshape((X.shape[0], 12, 12))
-            else:
-                raise ValueError(
-                    f"Expected 2D input with 144 features (12 months × 12 bands), "
-                    f"got {X.shape[1]} features"
-                )
-        elif X.ndim != 3 or X.shape[1] != 12 or X.shape[2] != 12:
-            raise ValueError(
-                f"Input must be 3-dimensional (n_samples, 12, 12) or 2D with 144 features, "
-                f"got shape {X.shape}"
-            )
-
-        # Apply feature engineering
-        X_features = self.feature_engineer.transform(X, training=False)
-        X_features = X_features.values
+        # Use _prepare_data which handles reshape/validation and feature engineering.
+        # We pass a dummy y array of zeros (length matches X) because _prepare_data expects y,
+        # but we only need the features.
+        X_features, _ = self._prepare_data(X, np.zeros(X.shape[0]), training=training)
+        # X_features is already a numpy array (values) from _prepare_data.
 
         # Predict probabilities
         probabilities = self.model.predict_proba(X_features)
         return probabilities
-
     def save(self, directory: Optional[Union[str, Path]] = None) -> None:
         """
         Save the trainer and all associated artifacts.
