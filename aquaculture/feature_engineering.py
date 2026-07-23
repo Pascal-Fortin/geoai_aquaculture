@@ -326,17 +326,17 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
         # Step 2: Extract optical features (if included)
         if self.include_optical:
             # Extract S2 bands: shape (n_samples, 12, 10)
-            # Order: Blue, Green, Red, RE1, RE2, RE3, NIR, NarrowNIR, SWIR1, SWIR2
+            # Order: Blue, Green, NIR, NarrowNIR, RE1, RE2, RE3, Red, SWIR1, SWIR2
             s2_bands = X_masked[:, :, 2:12]
             # Separate the bands for easier indexing
             b = s2_bands[:, :, 0]  # Blue
             g = s2_bands[:, :, 1]  # Green
-            r = s2_bands[:, :, 2]  # Red
-            re1 = s2_bands[:, :, 3]  # RE1
-            re2 = s2_bands[:, :, 4]  # RE2
-            re3 = s2_bands[:, :, 5]  # RE3
-            nir = s2_bands[:, :, 6]  # NIR
-            nnir = s2_bands[:, :, 7]  # NarrowNIR
+            nir = s2_bands[:, :, 2]  # NIR
+            nnir = s2_bands[:, :, 3]  # NarrowNIR
+            re1 = s2_bands[:, :, 4]  # RE1
+            re2 = s2_bands[:, :, 5]  # RE2
+            re3 = s2_bands[:, :, 6]  # RE3
+            r = s2_bands[:, :, 7]   # Red
             s1 = s2_bands[:, :, 8]  # SWIR1
             s2 = s2_bands[:, :, 9]  # SWIR2
 

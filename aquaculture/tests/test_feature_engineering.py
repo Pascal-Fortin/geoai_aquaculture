@@ -147,18 +147,18 @@ def test_cloudy_month_within_window():
     # Initialize all bands to some baseline value
     X = np.ones((n_samples, 12, 12), dtype=np.float64) * 0.5  # placeholder
 
-    # Set specific bands for NDVI calculation: NIR (band 8) and Red (band 4) according to band order:
-    # Band order: 0=VH,1=VV,2=Blue,3=Green,4=Red,5=RE1,6=RE2,7=RE3,8=NIR,9=NarrowNIR,10=SWIR1,11=SWIR2
-    # Set Red = 0.2, NIR = 0.8 to get NDVI = 0.6
-    X[:, :, 4] = 0.2   # Red
-    X[:, :, 8] = 0.8   # NIR
+    # Set specific bands for NDVI calculation: NIR (band 4) and Red (band 9) according to band order:
+    # Band order: 0=VH,1=VV,2=Blue,3=Green,4=NIR,5=Nira,6=RE1,7=RE2,8=RE3,9=Red,10=SWIR1,11=SWIR2
+    # Set NIR = 0.2, Red = 0.09 to get NDVI = 0.3793103448275862
+    X[:, :, 4] = 0.2   # NIR
+    X[:, :, 9] = 0.09  # Red
     # Set other S2 bands to some constants (doesn't matter much for NDVI)
     X[:, :, 2] = 0.1   # Blue
     X[:, :, 3] = 0.5   # Green
-    X[:, :, 5] = 0.05  # RE1
-    X[:, :, 6] = 0.06  # RE2
-    X[:, :, 7] = 0.07  # RE3
-    X[:, :, 9] = 0.09  # NarrowNIR
+    X[:, :, 5] = 0.05  # Nira
+    X[:, :, 6] = 0.06  # RE1
+    X[:, :, 7] = 0.07  # RE2
+    X[:, :, 8] = 0.8   # RE3
     X[:, :, 10] = 0.10 # SWIR1
     X[:, :, 11] = 0.11 # SWIR2
 
@@ -194,8 +194,8 @@ def test_cloudy_month_within_window():
         raise AssertionError("NDVI_mean not found in feature names")
 
     ndvi_mean_val = X_trans.iloc[0, ndvi_mean_idx]
-    # Expected NDVI mean over months 0,2,3 (Jan, Mar, Apr) each NDVI = 0.6 => mean = 0.6
-    expected = 0.6
+    # Expected NDVI mean over months 0,2,3 (Jan, Mar, Apr) each NDVI = 0.3793103448275862 => mean = 0.3793103448275862
+    expected = 0.3793103448275862
     tolerance = 1e-6
     assert abs(ndvi_mean_val - expected) < tolerance, f"NDVI mean expected {expected}, got {ndvi_mean_val}"
 
