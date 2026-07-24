@@ -1235,28 +1235,28 @@ Implemented in: `inference.py:InferencePipeline.create_submission()` lines 186-2
 #### Training Phase
 ```mermaid
 flowchart LR
-    A[Raw Train Data] --> B[Stochastic Masking<br>(Window + Dropout)]
-    B --> C[Feature Engineering]
-    C --> D[Model Update<br>(Backpropagation)]
-    D --> E[Loss Computation<br>(vs Train Labels)]
+    A["Raw Train Data"] --> B["Stochastic Masking<br>(Window + Dropout)"]
+    B --> C["Feature Engineering"]
+    C --> D["Model Update<br>(Backpropagation)"]
+    D --> E["Loss Computation<br>(vs Train Labels)"]
 ```
 
 #### Validation Phase (Optuna)
 ```mermaid
 flowchart LR
-    A[Raw Val Data] --> B[Fixed Masking<br>(Pre-computed Realizations)]
-    B --> C[Feature Engineering]
-    C --> D[Model Evaluation<br>(No Updates)]
-    D --> E[Metric Computation<br>(vs Val Labels)]
+    A["Raw Val Data"] --> B["Fixed Masking<br>(Pre-computed Realizations)"]
+    B --> C["Feature Engineering"]
+    C --> D["Model Evaluation<br>(No Updates)"]
+    D --> E["Metric Computation<br>(vs Val Labels)"]
 ```
 
 #### Test Phase
 ```mermaid
 flowchart LR
-    A[Raw Test Data] --> B[Deterministic Processing<br>(No Masking)]
-    B --> C[Feature Engineering]
-    C --> D[Model Inference<br>(No Updates)]
-    D --> E[Probability Output]
+    A["Raw Test Data"] --> B["Deterministic Processing<br>(No Masking)"]
+    B --> C["Feature Engineering"]
+    C --> D["Model Inference<br>(No Updates)"]
+    D --> E["Probability Output"]
 ```
 
 ### Key Design Justifications
