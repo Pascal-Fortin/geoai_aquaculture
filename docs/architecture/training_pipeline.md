@@ -1690,11 +1690,6 @@ Values:
 - **Months inside window** (Apr-Aug):
   - SAR bands (VH,VV): Preserved
   - S2 bands: Subject to monthly dropout
-    - April: 15% dropout → ~1-2 bands masked
-    - May: 3% dropout → 0 bands typically masked  
-    - June: 0% dropout → 0 bands masked
-    - July: 1% dropout → 0 bands typically masked
-    - August: 76% dropout → ~7-8 bands masked
 
 #### 3. Feature Computation
 **Example: NDVI_04 (April NDVI)**
@@ -1748,10 +1743,10 @@ Position in feature vector:
 Identical to training sample raw input
 
 #### 2. Observation Generation (Inference)
-- **Window length**: 12 months (all months used - no windowing)
+- **Window length**: 4-6 month window as prodived in the competition data
 - **Start month**: 0 (January)
 - **End month**: 11 (December)
-- **No masking applied**: All months processed as observed
+- **No masking applied**: All months processed as observed unless -9999
 - **SAR bands**: Preserved (no masking ever applied to SAR)
 - **S2 bands**: All processed (no monthly dropout in inference)
 
@@ -1768,14 +1763,14 @@ Identical to training sample raw input
 
 #### 4. Key Differences from Training
 - **No artificial missing data**: All original values preserved
-- **Full temporal coverage**: 12 months vs 4-6 month window
+- **Full temporal coverage**: 4-6 month window (same as training)
 - **Deterministic processing**: Identical output given same input
 - **Higher information content**: No simulated data loss
 
 #### 5. Practical Implications
-- **Training**: Model learns to generalize from partial/noisy observations
+- **Training**: Model learns to generalize from simulated observations
 - **Inference**: Model makes predictions using complete available information
-- **Domain shift**: Slight difference between train (simulated imperfect) and test (actual complete) conditions
+- **Domain shift**: Slight difference between train (simulated imperfect) and test conditions
 - **Mitigation**: Training simulation matches expected real-world data quality
 
 This trace demonstrates how the observation process creates a realistic simulation of satellite data limitations during training while preserving information fidelity during inference, enabling the model to learn robust representations that generalize to actual operational conditions.
