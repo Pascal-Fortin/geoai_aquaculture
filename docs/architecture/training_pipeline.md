@@ -334,16 +334,16 @@ sequenceDiagram
     participant Mask as S2 Masking
     participant Process as Feature Processing
     
-    Raw->>Window: Select 4-6 month window<br/>Choose start month
+    Raw->>Window: Select 4-6 month window<br>Choose start month
     Window->>Mask: Generate monthly dropout mask
-    Mask->>RAW: Apply window mask<br/>(Outside window: all bands=-9999)
-    RAW->>Mask: Apply monthly dropout<br/>(Inside window: S2 bands probabilistically masked)
+    Mask->>RAW: Apply window mask<br>(Outside window: all bands=-9999)
+    RAW->>Mask: Apply monthly dropout<br>(Inside window: S2 bands probabilistically masked)
     Mask->>Process: Convert -9999 to NaN
-    Process->>Process: Compute spectral indices<br/>(NDVI, NDWI, etc.)
-    Process->>Process: Compute SAR features<br/>(VH, VV, ratio, diff)
-    Process->>Process: Compute cross features<br/>(Ratios and products)
-    Process->>Process: Compute temporal statistics<br/>(Mean, std, min, max, amp, slope)
-    Process->>Process: Compute metadata<br/>(Window length, start month, etc.)
+    Process->>Process: Compute spectral indices<br>(NDVI, NDWI, etc.)
+    Process->>Process: Compute SAR features<br>(VH, VV, ratio, diff)
+    Process->>Process: Compute cross features<br>(Ratios and products)
+    Process->>Process: Compute temporal statistics<br>(Mean, std, min, max, amp, slope)
+    Process->>Process: Compute metadata<br>(Window length, start month, etc.)
     Process->>Features: Concatenate all features
 ```
 
@@ -1159,7 +1159,7 @@ sequenceDiagram
     
     User->>IP: predict_proba(X_test)
     IP->>FE: transform(X_test, training=False)
-    FE->>FE: Apply feature engineering<br/>(NO stochastic masking)
+    FE->>FE: Apply feature engineering<br>(NO stochastic masking)
     FE->>IP: Return feature matrix
     IP->>M: predict_proba(features)
     M->>IP: Return probabilities
@@ -1235,27 +1235,27 @@ Implemented in: `inference.py:InferencePipeline.create_submission()` lines 186-2
 #### Training Phase
 ```mermaid
 flowchart LR
-    A[Raw Train Data] --> B[Stochastic Masking<br/>(Window + Dropout)]
+    A[Raw Train Data] --> B[Stochastic Masking<br>(Window + Dropout)]
     B --> C[Feature Engineering]
-    C --> D[Model Update<br/>(Backpropagation)]
-    D --> E[Loss Computation<br/>(vs Train Labels)]
+    C --> D[Model Update<br>(Backpropagation)]
+    D --> E[Loss Computation<br>(vs Train Labels)]
 ```
 
 #### Validation Phase (Optuna)
 ```mermaid
 flowchart LR
-    A[Raw Val Data] --> B[Fixed Masking<br/>(Pre-computed Realizations)]
+    A[Raw Val Data] --> B[Fixed Masking<br>(Pre-computed Realizations)]
     B --> C[Feature Engineering]
-    C --> D[Model Evaluation<br/>(No Updates)]
-    D --> E[Metric Computation<br/>(vs Val Labels)]
+    C --> D[Model Evaluation<br>(No Updates)]
+    D --> E[Metric Computation<br>(vs Val Labels)]
 ```
 
 #### Test Phase
 ```mermaid
 flowchart LR
-    A[Raw Test Data] --> B[Deterministic Processing<br/>(No Masking)]
+    A[Raw Test Data] --> B[Deterministic Processing<br>(No Masking)]
     B --> C[Feature Engineering]
-    C --> D[Model Inference<br/>(No Updates)]
+    C --> D[Model Inference<br>(No Updates)]
     D --> E[Probability Output]
 ```
 
