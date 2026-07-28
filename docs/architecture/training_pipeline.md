@@ -1222,12 +1222,12 @@ Implemented in: `inference.py:InferencePipeline.create_submission()` lines 186-2
 | Aspect | Training | Validation | Test |
 |--------|----------|------------|------|
 | **Data source** | Training split (80%) | Validation split (20%) | Test set (unseen) |
-| **Masking simulation** | ✅ Enabled (stochastic) | ❌ Disabled (fixed realizations) | ❌ Disabled (deterministic) |
-| **Feature randomness** | High (new per epoch/trial) | Medium (fixed realizations) | None (deterministic) |
+| **Masking simulation** | ✅ Enabled (stochastic) | ✅ Enabled (fixed realizations) | ✅ Enabled (deterministic) |
+| **Feature randomness** | High (new per epoch/trial) | Medium (fixed realizations) | Low (deterministic simulation) |
 | **Labels used** | ✅ Yes (for loss calculation) | ✅ Yes (for metric calculation) | ❌ No (predictions only) |
 | **Model updates** | ✅ Yes (backpropagation) | ❌ No (evaluation only) | ❌ No (inference only) |
 | **Purpose** | Model fitting | Hyperparameter evaluation | Final prediction |
-| **Stochastic elements** | Window selection, monthly dropout, data ordering | Fixed window/mask per realization | None |
+| **Stochastic elements** | Window selection, monthly dropout, data ordering | Fixed window/mask per realization | None (uses fixed seed) |
 | **Early stopping** | ❌ Not used in Optuna<br>✅ Used in final training | N/A | N/A |
 
 ### Detailed Process Flow
@@ -1253,7 +1253,7 @@ flowchart LR
 #### Test Phase
 ```mermaid
 flowchart LR
-    A["Raw Test Data"] --> B["Deterministic Processing<br>(No Masking)"]
+    A["Raw Test Data"] --> B["Deterministic Processing<br>(With Observation Simulation)"]
     B --> C["Feature Engineering"]
     C --> D["Model Inference<br>(No Updates)"]
     D --> E["Probability Output"]
@@ -1271,10 +1271,10 @@ flowchart LR
    - Reduces optimization noise
    - Enables meaningful gradient signals in parameter space
 
-3. **Deterministic test processing**:
-   - Ensures reproducible submissions
-   - Uses all available information (no artificial masking)
-   - Matches production deployment scenario
+3. **Deterministic test processing with simulation**:
+   - Applies observation process simulation with fixed parameters (consistent windowing/masking)
+   - Evaluates model under same conditions as training
+   - Matches expected competition data characteristics
 
 ## 17. Reproducibility
 
