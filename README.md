@@ -17,7 +17,8 @@ This framework provides a complete machine learning pipeline for processing Sent
 - **Multiple Model Support**: LightGBM, CatBoost, and XGBoost through a unified interface
 - **Automatic Class Handling**: Built-in support for imbalanced datasets
 - **Robust Validation**: Proper handling of the observation process (stochastic training vs. fixed validation)
-- **Hyperparameter Optimization**: Integrated Optuna support with pruning
+- **Stratified K-Fold Cross-Validation**: Integrated Optuna support with cross-validation for robust hyperparameter optimization
+- **Hold-out Test Set**: Separate test set for final unbiased evaluation
 - **Experiment Tracking**: Reproducible experiments with automatic artifact saving
 - **Comprehensive Evaluation**: Competition metric (0.6×F1 + 0.4×ROC-AUC) and standard metrics
 - **Model Interpretation**: SHAP values, feature importance, and visualization tools
@@ -33,7 +34,7 @@ geoai_aquaculture/
 │   ├── model_factory.py         # Model creation with class weighting
 │   ├── metrics.py               # Evaluation metrics
 │   ├── evaluate.py              # Cross-validation and evaluation utilities
-│   ├── optuna_utils.py          # Optuna integration
+│   ├── optuna_utils.py          # Optuna integration with CV
 │   ├── trainer.py               # Main training orchestrator
 │   ├── io.py                    # Input/output utilities
 │   └── plotting.py              # Visualization functions
@@ -60,7 +61,7 @@ geoai_aquaculture/
 
 See the Jupyter notebooks in the `notebooks/` directory for step-by-step tutorials:
 
-1. **01_train_model.ipynb**: Complete training pipeline
+1. **01_train_model.ipynb**: Complete training pipeline with Stratified K-Fold CV
 2. **02_model_analysis.ipynb**: Model interpretation and analysis
 3. **03_inference.ipynb**: Making predictions on new data
 
@@ -105,19 +106,33 @@ The test suite covers:
 
 ## Key Features
 
+### Stratified K-Fold Cross-Validation for Hyperparameter Optimization
+
+The framework now uses Stratified K-Fold Cross-Validation for Optuna hyperparameter optimization instead of a single hold-out validation set:
+
+- **Training folds**: Generate new stochastic observation realizations for every Optuna trial
+- **Validation folds**: Use fixed observation realizations (pre-computed before Optuna begins)
+- **Hold-out test set**: Completely separate set held out for final unbiased evaluation
+- **Final model**: Trained on 100% of training data (everything except hold-out test set)
+- **Evaluation**: Three-stage reporting - training (in-sample), CV (out-of-sample estimate), test (final unbiased)
+
 ### Observation Process Handling
+
 The framework correctly implements the competition's observation process:
-- **Training**: Observation process resampled every Optuna trial
-- **Validation**: Fixed observation patterns throughout optimization
-- **Configurable**: Support for 1 or 5 validation realizations
+- **Training folds**: Observation process resampled every Optuna trial (different realization each time)
+- **Validation folds**: Fixed observation patterns throughout optimization (same realization for all trials)
+- **Configurable**: Support for 1 or 5 validation realizations for averaging
+- **Hold-out test set**: Processed with observation simulation but no stochasticity (deterministic)
 
 ### Model Factory
+
 Automatically handles class imbalance:
 - LightGBM: `scale_pos_weight` parameter
 - CatBoost: `auto_class_weights='Balanced'`
 - XGBoost: `scale_pos_weight` parameter
 
 ### Experiment Tracking
+
 Each training run creates a timestamped directory containing:
 - Configuration files
 - Best model and parameters
