@@ -55,6 +55,9 @@ geoai_aquaculture/
 ├── spatial_blocks/              # Spatial blocking utilities
 ├── tests/                       # Unit tests
 ├── requirements.txt             # Python dependencies
+└── docs/                        # Documentation
+    └── architecture/
+        └── training_pipeline.md # Detailed pipeline architecture documentation
 └── README.md                    # Project overview
 ```
 
@@ -109,14 +112,20 @@ flowchart TD
     B --> C[Create Trainer]
     C --> D[Hold Out Test Set]
     D --> E[Generate CV Folds from Training Data]
-    E --> F[Pre-compute Validation Realizations]
-    F --> G[Observation Generation]
-    G --> H[Feature Engineering]
-    H --> I[Model Training]
-    I --> J[Hyperparameter Optimization with CV]
-    J --> K[Final Model Training]
-    K --> L[Inference]
-    L --> M[submission.csv]
+    E --> F[FValidation[F --> G[Observation Generation]
+    --> H[Feature Engineering]
+      I[M]
+```
+
+I -> t
+ J I Hyperincomptimization with CV]
+[
+ -> K[Final
+Model Training] 
+-> L[Inference]
+ L 
+-> M[submission.csv]
+```
 ```
 
 ### Stage-by-Stage Description
@@ -124,7 +133,7 @@ flowchart TD
 #### 2.1 Load Raw Data
 - Raw data consists of multi-temporal Sentinel-1 SAR and Sentinel-2 multispectral imagery
 - Shape: `(n_samples, 12 time steps, 12 bands)` or flattened `(n_samples, 144)`
-- Band order: [0:VH, 1:VV, 2:blue, 3:green, 4:red, 5:re1, 6:re2, 7:re3, 8:nir, 9:nnir, 10:swir1, 11:swir2]
+- Band order: [0:VH, 1:VV, 2:blue, 3:green, 4:nir, 5:nira, 6:re1, 7:re2, 8:re3, 9:red, 10:swir1, 11:swir2]
 - Implemented in: `trainer.py:_prepare_data()` lines 121-193
 
 #### 2.2 Create FeatureEngineer
@@ -222,16 +231,16 @@ Band ordering (consistent in both formats):
 ```
 0: VH (VH polarization)
 1: VV (VV polarization)
-2: Blue (Sentinel-2 B02)
-3: Green (Sentinel-2 B03)
-4: Red (Sentinel-2 B04)
-5: NIR (Sentinel-2 B08)
-6: NIRA (Sentinel-2 B8A)
-7: RE1 (Sentinel-2 B05)
-8: RE2 (Sentinel-2 B06)
-9: RE3 (Sentinel-2 B07)
-10: SWIR1 (Sentinel-2 B11)
-11: SWIR2 (Sentinel-2 B12)
+2: blue (Sentinel-2 B02)
+3: green (Sentinel-2 B03)
+4: nir (Sentinel-2 B08)
+5: nira (Sentinel-2 B8A)
+6: re1 (Sentinel-2 B05)
+7: re2 (Sentinel-2 B06)
+8: re3 (Sentinel-2 B07)
+9: red (Sentinel-2 B04)
+10: swir1 (Sentinel-2 B11)
+11: swir2 (Sentinel-2 B12)
 ```
 
 Implemented in: `trainer.py:_prepare_data()` lines 142-157
