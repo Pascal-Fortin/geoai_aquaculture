@@ -112,19 +112,14 @@ flowchart TD
     B --> C[Create Trainer]
     C --> D[Hold Out Test Set]
     D --> E[Generate CV Folds from Training Data]
-    E --> F[FValidation[F --> G[Observation Generation]
-    --> H[Feature Engineering]
-      I[M]
-```
-
-I -> t
- J I Hyperincomptimization with CV]
-[
- -> K[Final
-Model Training] 
--> L[Inference]
- L 
--> M[submission.csv]
+    E --> F[Pre-compute Validation Realizations]
+    F --> G[Observation Generation]
+    G --> H[Feature Engineering]
+    H --> I[Model Training]
+    I --> J[Hyperparameter Optimization with CV]
+    J --> K[Final Model Training]
+    K --> L[Inference]
+    L --> M[submission.csv]
 ```
 ```
 
