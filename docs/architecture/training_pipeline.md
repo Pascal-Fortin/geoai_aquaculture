@@ -121,7 +121,6 @@ flowchart TD
     K --> L[Inference]
     L --> M[submission.csv]
 ```
-```
 
 ### Stage-by-Stage Description
 
