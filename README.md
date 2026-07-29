@@ -1,15 +1,22 @@
 # Aquaculture Machine Learning Framework
 
-A production-quality machine learning framework for the aquaculture competition, built around an existing feature engineering package.
+A production-quality machine learning framework for the aquaculture competition, featuring a purpose-built feature engineering package.
 
 ## Overview
 
-This framework provides a complete machine learning pipeline for processing Sentinel-1/2 satellite time series data to classify aquaculture ponds. It's designed around an existing feature engineering package (`aquaculture`) that handles:
+This framework provides a complete machine learning pipeline for processing Sentinel-1/2 satellite time series data to classify aquaculture ponds. Both the machine learning framework and the accompanying feature engineering package (`aquaculture`) were developed specifically for this competition to handle:
 
-- Competition masking
+- Competition-specific masking simulation
 - Feature engineering (optical indices, SAR features, cross-sensor features)
 - Temporal statistics
 - Metadata generation
+
+## Documentation
+
+Detailed documentation is available in the `docs/` directory:
+- **docs/architecture/training_pipeline.md** - Comprehensive guide to the machine learning pipeline architecture, execution flow, observation process handling, and implementation details
+
+This documentation is essential for understanding the sophisticated components of this system, including the Stratified K-Fold Cross-Validation implementation for Optuna optimization and the observation process simulation that is critical to the competition.
 
 ## Features
 
@@ -28,7 +35,10 @@ This framework provides a complete machine learning pipeline for processing Sent
 
 ```
 geoai_aquaculture/
-├── aquaculture/                 # Existing feature engineering package
+├── aquaculture/                 # Purpose-built feature engineering package for the competition
+├── docs/                        # Documentation
+│   └── architecture/
+│       └── training_pipeline.md # Detailed pipeline architecture documentation
 ├── src/                         # Main framework source code
 │   ├── config.py                # Configuration management
 │   ├── model_factory.py         # Model creation with class weighting
@@ -39,8 +49,8 @@ geoai_aquaculture/
 │   ├── io.py                    # Input/output utilities
 │   └── plotting.py              # Visualization functions
 ├── notebooks/                   # Jupyter notebooks for usage examples
-│   ├── 01_train_model.ipynb     # Training tutorial
-│   ├── 02_model_analysis.ipynb  # Model analysis tutorial
+│   ├── 01_train_model.ipynb     # Training pipeline with Stratified K-Fold CV
+│   ├── 02_model_analysis.ipynb  # Model interpretation and analysis
 │   └── 03_inference.ipynb       # Inference tutorial
 ├── tests/                       # Unit tests
 ├── experiments/                 # Experiment outputs (created during runtime)
@@ -55,7 +65,7 @@ geoai_aquaculture/
    ```bash
    pip install -r requirements.txt
    ```
-3. Ensure the existing `aquaculture` package is available in your Python path
+3. The `aquaculture` package is included in this repository - no separate installation needed
 
 ## Usage
 
@@ -118,7 +128,8 @@ The framework now uses Stratified K-Fold Cross-Validation for Optuna hyperparame
 
 ### Observation Process Handling
 
-The framework correctly implements the competition's observation process:
+Both the ML framework and the aquaculture feature engineering package were developed specifically for this competition to correctly implement the observation process:
+
 - **Training folds**: Observation process resampled every Optuna trial (different realization each time)
 - **Validation folds**: Fixed observation patterns throughout optimization (same realization for all trials)
 - **Configurable**: Support for 1 or 5 validation realizations for averaging
