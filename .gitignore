@@ -17,3 +17,7 @@ tests/__pycache__
 
 # Output directories
 experiments/
+
+# Coding agent plan files
+plans/
+memory/
