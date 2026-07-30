@@ -281,6 +281,7 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
             end_months = np.zeros(n_samples, dtype=int)
             # We'll also create a mask for S2 bands per sample, per month, per band
             s2_mask = np.ones((n_samples, 12, 10), dtype=bool)  # True means keep
+            X_masked = X.copy()  # We'll move this outside the loop for efficiency
             for i in range(n_samples):
                 wl = select_window_length(rng, self.window_length_probs)
                 sm = select_start_month(rng, wl, self.start_month_distribution)
@@ -291,25 +292,24 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
 
                 # FIRST: Set ALL bands (SAR and S2) to -9999 for months OUTSIDE the window
                 # Months outside window: [0, sm) and (em, 11]
-                X_masked = X.copy()  # We'll move this outside the loop for efficiency
                 for m in range(12):
                     if m < sm or m > em:
                         # Set ALL bands (0-11) to -9999 for months outside window
                         X_masked[i, m, :] = -9999.0
 
                 # SECOND: For months INSIDE the window, apply cloud masking to S2 bands only
-                # Create monthly dropout mask for this sample
-                # Shape (12, 10) for months and bands
-                monthly_dropout_arr = np.array(self.s2_monthly_dropout).reshape((1, 12, 1))
-                # Generate random uniform for each month and band
-                rands = rng.random((12, 10))
-                # Mask where random >= dropout (keep) else False (mask)
-                mask_12_10 = rands >= monthly_dropout_arr
-                s2_mask[i] = mask_12_10
-                # Apply mask to S2 bands (indices 2-11) ONLY for months inside window
+                # Generate ONE random value per month (not per band)
+                monthly_rands = rng.random(12)  # Shape: (12,) - one random value per month
+                # For each month, decide whether to keep or mask ALL S2 bands
+                monthly_keep = monthly_rands >= np.array(self.s2_monthly_dropout)  # Shape: (12,)
+                # Apply to S2 bands for window months
                 for m in range(sm, em + 1):
-                    # Where mask is False, set S2 bands to -9999
-                    X_masked[i, m, 2:12][~s2_mask[i, m]] = -9999.0
+                    if not monthly_keep[m]:  # If we decided to mask this month
+                        # Mask ALL S2 bands (indices 2-11) for this month
+                        X_masked[i, m, 2:12] = -9999.0
+                        # Update mask to indicate these bands are masked
+                        s2_mask[i, m, :] = False
+                    # Else: keep S2 bands (mask remains True, which is the default)
         else:
             # No masking simulation: use all months as observed
             window_lengths = np.full(n_samples, 12, dtype=int)
