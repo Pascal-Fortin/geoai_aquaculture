@@ -164,7 +164,7 @@ flowchart TD
 - Simulates partial observations through window selection and cloud masking
 - **Training folds**: Stochastic window selection (4-6 months) + monthly S2 band dropout (NEW realization per trial)
 - **Validation folds**: Fixed window selection (pre-computed realizations, same across trials)
-- **Test set**: Deterministic processing (no stochasticity)
+- **Test set**: Deterministic processing (fixed seed ensures reproducible stochastic simulation of observation constraints)
 - Implemented in: `masking.py:apply_competition_mask()` lines 191-248
 
 #### 2.8 Feature Engineering
