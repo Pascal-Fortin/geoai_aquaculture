@@ -424,8 +424,8 @@ flowchart TD
     T --> U[Optuna Optimization]
     U --> V[Best Parameters]
     V --> W[Final Model Training]
-    W --> X[Training on ALL Data (Stochastic)]
-    X --> Y[Hold Out Test Set Evaluation]
+    W --> X["Training on ALL Data (Stochastic)"]
+    X --> Y["Hold Out Test Set Evaluation"]
 ```
 
 ### Observation Regeneration Timing
@@ -693,8 +693,8 @@ flowchart TD
     D --> E[Create Model]
     E --> F[Generate CV Folds]
     F --> G{For Each Fold}
-    G -->|Train Fold| H[Stochastic Feature Eng (New per Trial)]
-    G -->|Val Fold| I[Fixed Feature Eng (Pre-computed)]
+    G -->|Train Fold| H["Stochastic Feature Eng (New per Trial)"]
+    G -->|Val Fold| I["Fixed Feature Eng (Pre-computed)"]
     H --> J[Train Model]
     I --> K[Evaluate Model]
     J --> L[Compute Fold Score]
