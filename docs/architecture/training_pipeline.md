@@ -338,10 +338,10 @@ Implemented in:
   - SAR bands (VH, VV indices 0,1): Always preserved
   - S2 bands (indices 2-11): Subject to monthly dropout
 - Monthly dropout probabilities: `s2_monthly_dropout` (12 values, 0-1)
-- For each S2 band in each window month: 
-  - Sample uniform random [0,1)
-  - If < dropout probability: set to -9999 (masked)
-  - Else: preserve original value
+- For each window month:
+    - Sample uniform random [0,1)
+    - If < dropout probability: set ALL S2 bands to -9999 (masked)
+    - Else: preserve ALL S2 bands' original values
 
 Implemented in:
 - `feature_engineering.py:transform()` lines 276-322 (main loop)
