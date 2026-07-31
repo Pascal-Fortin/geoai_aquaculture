@@ -1551,9 +1551,9 @@ flowchart TD
 - **Validation**: Checks that generated features match expected names and count from training
 
 #### 15.2.3 Model Inference
-- **Probability Prediction**: Uses `model.predict_proba()` to get class probabilities
-- **Binary Classification**: Applies 0.5 threshold to convert probabilities to binary predictions
-- **Output Format**: Returns both raw probabilities and binary predictions as required by competition format
+- **Probability Prediction**: Uses `model.predict_proba()` to get class probabilities for the positive class
+- **Binary Prediction**: Uses `predict()` method to convert probabilities to binary predictions using 0.5 threshold
+- **Output Format**: `predict_proba()` returns probabilities only; `predict()` returns binary predictions only
 - **Batch Processing**: Supports efficient batch inference on large datasets
 
 #### 15.2.4 Post-processing
@@ -1566,15 +1566,19 @@ flowchart TD
 
 ```python
 # InferencePipeline.predict_proba() method
-def predict_proba(self, X: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+def predict_proba(self, X: np.ndarray) -> np.ndarray:
     # 1. Feature engineering with training=False (deterministic)
     X_features, _ = self.feature_engineer.transform(X, training=False)
+    X_features = X_features.values
     
     # 2. Model inference
-    probabilities = self.model.predict_proba(X_features)[:, 1]
-    predictions = (probabilities >= 0.5).astype(int)
+    probabilities = self.model.predict_proba(X_features)
     
-    return predictions, probabilities
+    # For binary classification, return probability of positive class
+    if probabilities.shape[1] == 2:
+        return probabilities[:, 1]
+    else:
+        return probabilities
 ```
 
 Located in: `inference.py:InferencePipeline.predict_proba()` lines 90-121
