@@ -102,7 +102,7 @@ Always determine
 
 If yes,
 
-write new tests.
+write new tests and include those in the appropriate tests directory. Update the master test script to include all new tests.
 
 Testing should include
 
