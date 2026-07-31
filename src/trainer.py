@@ -265,7 +265,7 @@ class Trainer:
         self.feature_names = list(X_features_df.columns)
         logger.info(f"Generated {len(self.feature_names)} features")
 
-        return X_features_df, y
+        return X_features_df.values, y
 
     def _generate_validation_realizations(self, X: np.ndarray, y: np.ndarray) -> list:
         """
