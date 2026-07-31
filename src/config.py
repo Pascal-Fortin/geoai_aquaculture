@@ -42,6 +42,8 @@ class TrainingConfig:
         Base directory for experiment tracking
     feature_engineering_config : AquacultureConfig, optional
         Configuration for the feature engineering pipeline
+    test_size : float, default=0.2
+        Proportion of dataset to include in the test split (must be between 0.0 and 1.0)
     enable_file_logging : bool, default=True
         Whether to enable file logging to experiment directory
     log_level_file : str, default='INFO'
@@ -58,6 +60,8 @@ class TrainingConfig:
     n_validation_realizations: int = 1
     experiment_dir: Union[str, Path] = 'experiments'
     feature_engineering_config: Optional[AquacultureConfig] = None
+    # Data splitting parameters
+    test_size: float = 0.2
     # Logging configuration options
     enable_file_logging: bool = True
     log_level_file: str = 'INFO'
@@ -73,6 +77,9 @@ class TrainingConfig:
 
         if self.n_trials < 1:
             raise ValueError("n_trials must be at least 1")
+
+        if not 0.0 <= self.test_size < 1.0:
+            raise ValueError("test_size must be in [0.0, 1.0)")
 
         if self.n_validation_realizations not in [1, 5]:
             raise ValueError("n_validation_realizations must be 1 or 5")
