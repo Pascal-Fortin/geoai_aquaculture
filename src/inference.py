@@ -105,8 +105,7 @@ class InferencePipeline:
         """
         # Apply feature engineering if available
         if self.feature_engineer is not None:
-            X_features = self.feature_engineer.transform(X, training=False)
-            X_features = X_features.values
+            X_features = self.feature_engineer.transform(X, training=False)  # Keep as DataFrame
         else:
             # Assume X is already feature-engineered
             X_features = X
