@@ -264,9 +264,9 @@ Implemented in: `feature_engineering.py:_build_feature_names()` lines 200-248
 ### Missing Value Representation
 - Missing/cloud-masked values represented as `-9999.0`
 - Converted to `np.nan` for internal processing
-- Temporal statistics handle NaN differently for SAR vs optical features:
-  - SAR: NaN propagates (results in NaN statistic if any NaN present)
-  - Optical: NaN values ignored in calculations
+- Temporal statistics ignore NaN values for all features:
+  - Both SAR and optical features: NaN values ignored in calculations
+  - Statistics computed only over observed/unmasked months
 - Implemented in: `feature_engineering.py:transform()` lines 323-324 and `temporal.py` functions
 
 ## 4. Cross Validation

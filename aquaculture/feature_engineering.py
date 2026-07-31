@@ -422,8 +422,8 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
                 ignore_nans.extend([True] * 11)  # 6 + 5 = 11 optical features
             # SAR features (if included)
             if self.include_sar:
-                # VH, VV, VH_VV_ratio, VH_VV_diff (4): all False (don't ignore NaNs)
-                ignore_nans.extend([False] * 4)
+                # VH, VV, VH_VV_ratio, VH_VV_diff (4): all True (ignore NaNs like other features)
+                ignore_nans.extend([True] * 4)
             # Cross sensor features (if included)
             if self.include_cross_sensor_features and self.include_optical and self.include_sar:
                 # 8 cross features: all True (ignore NaNs)

@@ -58,6 +58,8 @@ def _safe_mean(arr: np.ndarray, ignore_nans: bool) -> float:
     if ignore_nans:
         return np.nanmean(arr)
     else:
+        if np.any(np.isnan(arr)):
+            return np.nan
         return np.mean(arr)
 
 
@@ -80,6 +82,8 @@ def _safe_std(arr: np.ndarray, ignore_nans: bool) -> float:
     if ignore_nans:
         return np.nanstd(arr, ddof=1)
     else:
+        if np.any(np.isnan(arr)):
+            return np.nan
         return np.std(arr, ddof=1)
 
 
@@ -102,6 +106,8 @@ def _safe_min(arr: np.ndarray, ignore_nans: bool) -> float:
     if ignore_nans:
         return np.nanmin(arr)
     else:
+        if np.any(np.isnan(arr)):
+            return np.nan
         return np.min(arr)
 
 
@@ -124,6 +130,8 @@ def _safe_max(arr: np.ndarray, ignore_nans: bool) -> float:
     if ignore_nans:
         return np.nanmax(arr)
     else:
+        if np.any(np.isnan(arr)):
+            return np.nan
         return np.max(arr)
 
 
@@ -182,8 +190,7 @@ def compute_temporal_stats(
         Assumes time is axis 1.
     sar_indices : sequence of int
         Indices of SAR features (e.g., [0, 1] for VV, VH).
-        Statistics for these features will use all available months
-        (NaN values will result in NaN statistics).
+        Statistics for these features will ignore NaN values (compute over valid observations only).
     optical_indices : sequence of int
         Indices of optical features.
         Statistics for these features will ignore NaN values.
