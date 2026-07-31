@@ -237,22 +237,22 @@ class Trainer:
             logger.debug("Using cached feature matrix.")
             X_features_df = self._last_X_features
         else:
-            # Initialize feature engineer if not already done
+            # Feature engineer must already be fitted
             if self.feature_engineer is None:
+                # Create and fit feature engineer with configuration from trainer
                 self.feature_engineer = AquacultureFeatureEngineer(
                     simulate_mask=self.config.feature_engineering_config.simulate_mask,
                     random_state=self.config.random_seed,
-                    window_length_probs=self.config.feature_engineering_config.window_length_probs,
+                    window_length_probs=tuple(self.config.feature_engineering_config.window_length_probs),
                     start_month_distribution=self.config.feature_engineering_config.start_month_distribution,
                     s2_monthly_dropout=self.config.feature_engineering_config.s2_monthly_dropout,
                     include_optical=self.config.feature_engineering_config.include_optical,
                     include_sar=self.config.feature_engineering_config.include_sar,
                     include_cross_sensor_features=self.config.feature_engineering_config.include_cross_sensor_features,
                     include_temporal_statistics=self.config.feature_engineering_config.include_temporal_statistics,
-                    include_metadata=self.config.feature_engineering_config.include_metadata
+                    include_metadata=self.config.feature_engineering_config.include_metadata,
                 )
                 self.feature_engineer.fit(X)
-
             # Compute features
             X_features_df = self.feature_engineer.transform(X, training=training)
 
@@ -266,7 +266,6 @@ class Trainer:
         logger.info(f"Generated {len(self.feature_names)} features")
 
         return X_features_df.values, y
-
     def _generate_validation_realizations(self, X: np.ndarray, y: np.ndarray) -> list:
         """
         Generate fixed validation realizations for consistent evaluation during Optuna.
@@ -285,21 +284,14 @@ class Trainer:
         """
         realizations = []
 
-        # Store original simulate_mask setting
-        original_simulate_mask = self.feature_engineer.simulate_mask
-
         for i in range(self.config.n_validation_realizations):
-            # Enable simulation for validation realization generation
-            self.feature_engineer.simulate_mask = True
             # Use different random seed for each realization
-            self.feature_engineer.random_state = self.config.random_seed + i * 1000
+            seed = self.config.random_seed + i * 1000
 
-            # Prepare data (feature engineering) for this realization
-            # We need to temporarily create a feature engineer with the current settings
-            # to avoid interfering with the main feature_engineer state
+            # Create a temporary feature engineer with simulation enabled
             temp_feature_engineer = AquacultureFeatureEngineer(
                 simulate_mask=True,  # Always simulate for validation realizations
-                random_state=self.config.random_seed + i * 1000,
+                random_state=seed,
                 window_length_probs=self.config.feature_engineering_config.window_length_probs,
                 start_month_distribution=self.config.feature_engineering_config.start_month_distribution,
                 s2_monthly_dropout=self.config.feature_engineering_config.s2_monthly_dropout,
@@ -307,7 +299,7 @@ class Trainer:
                 include_sar=self.config.feature_engineering_config.include_sar,
                 include_cross_sensor_features=self.config.feature_engineering_config.include_cross_sensor_features,
                 include_temporal_statistics=self.config.feature_engineering_config.include_temporal_statistics,
-                include_metadata=self.config.feature_engineering_config.include_metadata
+                include_metadata=self.config.feature_engineering_config.include_metadata,
             )
 
             # Process the data through the temporary feature engineer
@@ -338,11 +330,7 @@ class Trainer:
 
             logger.debug(f"Generated validation realization {i+1}/{self.config.n_validation_realizations}")
 
-        # Restore original setting
-        self.feature_engineer.simulate_mask = original_simulate_mask
-
         return realizations
-
     def _generate_validation_realizations_for_fold(self, X: np.ndarray, y: np.ndarray) -> list:
         """
         Generate fixed validation realizations for a specific fold (used during CV).
@@ -363,21 +351,14 @@ class Trainer:
         """
         realizations = []
 
-        # Store original simulate_mask setting
-        original_simulate_mask = self.feature_engineer.simulate_mask
-
         for i in range(self.config.n_validation_realizations):
-            # Enable simulation for validation realization generation
-            self.feature_engineer.simulate_mask = True
             # Use different random seed for each realization
-            self.feature_engineer.random_state = self.config.random_seed + i * 1000 + 10000  # Offset to avoid conflicts
+            seed = self.config.random_seed + i * 1000 + 10000  # Offset to avoid conflicts
 
-            # Prepare data (feature engineering) for this realization
-            # We need to temporarily create a feature engineer with the current settings
-            # to avoid interfering with the main feature_engineer state
+            # Create a temporary feature engineer with simulation enabled
             temp_feature_engineer = AquacultureFeatureEngineer(
                 simulate_mask=True,  # Always simulate for validation realizations
-                random_state=self.config.random_seed + i * 1000 + 10000,  # Offset to avoid conflicts
+                random_state=seed,
                 window_length_probs=self.config.feature_engineering_config.window_length_probs,
                 start_month_distribution=self.config.feature_engineering_config.start_month_distribution,
                 s2_monthly_dropout=self.config.feature_engineering_config.s2_monthly_dropout,
@@ -385,7 +366,7 @@ class Trainer:
                 include_sar=self.config.feature_engineering_config.include_sar,
                 include_cross_sensor_features=self.config.feature_engineering_config.include_cross_sensor_features,
                 include_temporal_statistics=self.config.feature_engineering_config.include_temporal_statistics,
-                include_metadata=self.config.feature_engineering_config.include_metadata
+                include_metadata=self.config.feature_engineering_config.include_metadata,
             )
 
             # Process the data through the temporary feature engineer
@@ -416,11 +397,7 @@ class Trainer:
 
             logger.debug(f"Generated validation realization {i+1}/{self.config.n_validation_realizations} for fold")
 
-        # Restore original setting
-        self.feature_engineer.simulate_mask = original_simulate_mask
-
         return realizations
-
     def fit(self, X: np.ndarray, y: np.ndarray) -> 'Trainer':
         """
         Fit the trainer to the training data.
@@ -430,7 +407,7 @@ class Trainer:
         2. Train/validation/test split (hold out test set for final evaluation)
         3. Generate validation realizations
         4. Hyperparameter optimization with Optuna
-        5. Train final model on combined train+val data (with validation for early stopping)
+        5. Train final model with best parameters
         6. Evaluate and save artifacts
 
         Parameters
@@ -467,14 +444,42 @@ class Trainer:
         # The remaining data (X_train_val, y_train_val) will be used for CV and hyperparameter tuning
         # Store classes for later use (from training data for consistency to avoid data leakage)
         self.classes_ = np.unique(y_train_val)
-
-        # Log dataset information
-        logger.info(f"Dataset shape: {X.shape}")
+        # Instantiate and fit feature engineer on training data (X_train_val_raw)
+        self.feature_engineer = AquacultureFeatureEngineer(
+            simulate_mask=self.config.feature_engineering_config.simulate_mask,
+            random_state=self.config.random_seed,
+            window_length_probs=tuple(self.config.feature_engineering_config.window_length_probs),
+            start_month_distribution=self.config.feature_engineering_config.start_month_distribution,
+            s2_monthly_dropout=self.config.feature_engineering_config.s2_monthly_dropout,
+            include_optical=self.config.feature_engineering_config.include_optical,
+            include_sar=self.config.feature_engineering_config.include_sar,
+            include_cross_sensor_features=self.config.feature_engineering_config.include_cross_sensor_features,
+            include_temporal_statistics=self.config.feature_engineering_config.include_temporal_statistics,
+            include_metadata=self.config.feature_engineering_config.include_metadata,
+        )
+        # Prepare training data for feature engineering (handle 2D to 3D conversion if needed)
+        X_train_val_processed = X_train_val_raw.copy()
+        if X_train_val_processed.ndim == 2:
+            if X_train_val_processed.shape[1] == 144:  # 12 months * 12 bands
+                # Reshape from (n_samples, 144) to (n_samples, 12, 12)
+                # Assuming column order matches: [VH_01, VV_01, ..., swir2_01, VH_02, ..., swir2_12]
+                X_train_val_processed = X_train_val_processed.reshape((X_train_val_processed.shape[0], 12, 12))
+            else:
+                raise ValueError(
+                    f"Expected 2D input with 144 features (12 months × 12 bands), "
+                    f"got {X_train_val_processed.shape[1]} features"
+                )
+        elif X_train_val_processed.ndim != 3 or X_train_val_processed.shape[1] != 12 or X_train_val_processed.shape[2] != 12:
+            raise ValueError(
+                f"Input must be 3-dimensional (n_samples, 12, 12) or 2D with 144 features, "
+                f"got shape {X_train_val_processed.shape}"
+            )
+        self.feature_engineer.fit(X_train_val_processed)
         logger.info(f"Training data (for CV): {X_train_val_raw.shape}, Test set (held out): {X_test_raw.shape}")
         logger.info(f"Class distribution (training): {np.bincount(y_train_val)}")
 
         # Prepare features for TEST dataset (held out for final evaluation)
-        X_features_test, _ = self._prepare_data(X_test_raw, y_test, training=True)
+        X_features_test, _ = self._prepare_data(X_test_raw, y_test, training=False)
 
         # Set up cross-validation
         n_splits = self.config.n_splits
@@ -495,6 +500,9 @@ class Trainer:
 
             # Generate validation realizations for this fold
             # We use the same logic as _generate_validation_realizations but for fold-specific data
+            # Note: we need to call the method on self, but note that self._generate_validation_realizations_for_fold
+            # expects self to have a feature_engineer that is already fitted? Actually the method creates a temporary
+            # engineer each time, so it's fine.
             fold_val_realizations = self._generate_validation_realizations_for_fold(
                 X_val_fold_raw, y_val_fold
             )
@@ -551,7 +559,7 @@ class Trainer:
 
         # Evaluate on TEST data (held out from training entirely)
         # We need to prepare features for the test set
-        X_features_test, _ = self._prepare_data(X_test_raw, y_test, training=True)
+        X_features_test, _ = self._prepare_data(X_test_raw, y_test, training=False)
 
         test_metrics = evaluate_model_performance(
             self.model, X_features_test, y_test, model_name="Test"
@@ -586,7 +594,7 @@ class Trainer:
         train_test_gap = train_score - test_score
         logger.info(f"Train-Test gap: {train_test_gap:.4f}")
         if train_test_gap > 0.1:  # Arbitrary threshold for significant overfitting
-            logger.warning(f"Large train-test gap ({train_test_gap:.4f}) suggests potential overfitting")
+            logger.warning(f"Large train-train gap ({train_test_gap:.4f}) suggests potential overfitting")
 
         # Log individual fold scores from the best trial if available
         fold_scores = []
@@ -629,7 +637,6 @@ class Trainer:
 
         logger.info("Training completed successfully!")
         return self
-
     def predict(self, X: np.ndarray, training: bool = False) -> np.ndarray:
         """
         Make predictions on new data.
