@@ -10,6 +10,9 @@ import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 from sklearn.base import clone
 import logging
+import matplotlib.pyplot as plt
+import json
+import os
 
 from .metrics import calculate_metrics, competition_score
 
@@ -183,3 +186,236 @@ def get_feature_importance(model, feature_names: List[str],
     importance_df = importance_df.sort_values('importance', ascending=False).reset_index(drop=True)
 
     return importance_df
+
+
+def plot_learning_curve(estimator, X: np.ndarray, y: np.ndarray,
+                       cv=None, train_sizes=None, scoring=None,
+                       title: str = "Learning Curve",
+                       ylim: tuple = None,
+                       figsize: tuple = (10, 6),
+                       save_path: str = None) -> plt.Figure:
+    """
+    Generate a learning curve showing training and validation scores vs training set size.
+
+    Parameters
+    ----------
+    estimator : sklearn estimator
+        The model to evaluate
+    X : np.ndarray
+        Feature matrix
+    y : np.ndarray
+        Target vector
+    cv : int, cross-validation generator or an iterable, optional
+        Determines the cross-validation splitting strategy
+    train_sizes : array-like, optional
+        Relative or absolute numbers of training examples used for learning curve
+    scoring : str, callable, optional
+        Scoring metric to use
+    title : str, default="Learning Curve"
+        Title for the plot
+    ylim : tuple, shape (ymin, ymax), optional
+        Defines minimum and maximum y-values plotted
+    figsize : tuple, default=(10, 6)
+        Figure size
+    save_path : str, optional
+        Path to save the figure. If None, figure is not saved
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The generated figure
+    """
+    if train_sizes is None:
+        train_sizes = np.linspace(0.1, 1.0, 10)
+
+    if scoring is None:
+        # Use competition score as default scoring
+        def competition_scorer(estimator, X, y):
+            y_pred_proba = estimator.predict_proba(X)[:, 1]
+            return competition_score(y, y_pred_proba)
+        scoring = competition_scorer
+
+    # Calculate learning curve
+    train_sizes, train_scores, test_scores = learning_curve(
+        estimator, X, y,
+        train_sizes=train_sizes,
+        cv=cv,
+        scoring=scoring,
+        n_jobs=-1
+    )
+
+    # Calculate mean and standard deviation
+    train_mean = np.mean(train_scores, axis=1)
+    train_std = np.std(train_scores, axis=1)
+    test_mean = np.mean(test_scores, axis=1)
+    test_std = np.std(test_scores, axis=1)
+
+    # Create plot
+    fig, ax = plt.subplots(1, 1, figsize=figsize)
+    ax.plot(train_sizes, train_mean, 'o-', color="r", label="Training score")
+    ax.plot(train_sizes, test_mean, 'o-', color="g", label="Cross-validation score")
+
+    # Plot standard deviation bands
+    ax.fill_between(train_sizes, train_mean - train_std, train_mean + train_std, alpha=0.1, color="r")
+    ax.fill_between(train_sizes, test_mean - test_std, test_mean + test_std, alpha=0.1, color="g")
+
+    ax.grid(True)
+    ax.set_xlabel("Training examples")
+    ax.set_ylabel("Score")
+    ax.legend(loc="best")
+    if ylim is not None:
+        ax.set_ylim(ylim)
+
+    plt.title(title)
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        logger.info(f"Learning curve saved to {save_path}")
+
+    return fig
+
+
+def plot_validation_curve(estimator, X: np.ndarray, y: np.ndarray, param_name: str,
+                         param_range, cv=None, scoring=None,
+                         title: str = "Validation Curve",
+                         ylim: tuple = None,
+                         figsize: tuple = (10, 6),
+                         save_path: str = None) -> plt.Figure:
+    """
+    Generate a validation curve showing training and validation scores vs parameter value.
+
+    Parameters
+    ----------
+    estimator : sklearn estimator
+        The model to evaluate
+    X : np.ndarray
+        Feature matrix
+    y : np.ndarray
+        Target vector
+    param_name : str
+        Name of the parameter to vary
+    param_range : array-like
+        Values of the parameter to be evaluated
+    cv : int, cross-validation generator or an iterable, optional
+        Determines the cross-validation splitting strategy
+    scoring : str, callable, optional
+        Scoring metric to use
+    title : str, default="Validation Curve"
+        Title for the plot
+    ylim : tuple, shape (ymin, ymax), optional
+        Defines minimum and maximum y-values plotted
+    figsize : tuple, default=(10, 6)
+        Figure size
+    save_path : str, optional
+        Path to save the figure. If None, figure is not saved
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The generated figure
+    """
+    if scoring is None:
+        # Use competition score as default scoring
+        def competition_scorer(estimator, X, y):
+            y_pred_proba = estimator.predict_proba(X)[:, 1]
+            return competition_score(y, y_pred_proba)
+        scoring = competition_scorer
+
+    # Calculate validation curve
+    train_scores, test_scores = validation_curve(
+        estimator, X, y,
+        param_name=param_name,
+        param_range=param_range,
+        cv=cv,
+        scoring=scoring,
+        n_jobs=-1
+    )
+
+    # Calculate mean and standard deviation
+    train_mean = np.mean(train_scores, axis=1)
+    train_std = np.std(train_scores, axis=1)
+    test_mean = np.mean(test_scores, axis=1)
+    test_std = np.std(test_scores, axis=1)
+
+    # Create plot
+    fig, ax = plt.subplots(1, 1, figsize=figsize)
+    ax.plot(param_range, train_mean, 'o-', color="r", label="Training score")
+    ax.plot(param_range, test_mean, 'o-', color="g", label="Validation score")
+
+    # Plot standard deviation bands
+    ax.fill_between(param_range, train_mean - train_std, train_mean + train_std, alpha=0.1, color="r")
+    ax.fill_between(param_range, test_mean - test_std, test_mean + test_std, alpha=0.1, color="g")
+
+    ax.grid(True)
+    ax.set_xlabel(param_name)
+    ax.set_ylabel("Score")
+    ax.legend(loc="best")
+    if ylim is not None:
+        ax.set_ylim(ylim)
+
+    plt.title(title)
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        logger.info(f"Validation curve saved to {save_path}")
+
+    return fig
+
+
+def plot_training_history(trainer_history: dict,
+                         title: str = "Training History",
+                         figsize: tuple = (12, 8),
+                         save_path: str = None) -> plt.Figure:
+    """
+    Plot training history showing metrics over epochs/iterations.
+
+    Parameters
+    ----------
+    trainer_history : dict
+        Dictionary containing training history with keys for different metrics
+        Expected format: {'train': [metric_values], 'val': [metric_values], ...}
+    title : str, default="Training History"
+        Title for the plot
+    figsize : tuple, default=(12, 8)
+        Figure size
+    save_path : str, optional
+        Path to save the figure. If None, figure is not saved
+
+    Returns
+    -------
+    matplotlib.figure.Figure
+        The generated figure
+    """
+    fig, axes = plt.subplots(2, 2, figsize=figsize)
+    axes = axes.flatten()
+
+    metrics_to_plot = ['competition_score', 'f1', 'roc_auc', 'logloss']
+    metric_titles = ['Competition Score', 'F1 Score', 'ROC-AUC', 'Log Loss']
+
+    for idx, (metric, title_text) in enumerate(zip(metrics_to_plot, metric_titles)):
+        ax = axes[idx]
+
+        if 'train' in trainer_history and metric in trainer_history['train']:
+            epochs = range(1, len(trainer_history['train'][metric]) + 1)
+            ax.plot(epochs, trainer_history['train'][metric], 'o-', label=f'Training {title_text}')
+
+        if 'val' in trainer_history and metric in trainer_history['val']:
+            epochs = range(1, len(trainer_history['val'][metric]) + 1)
+            ax.plot(epochs, trainer_history['val'][metric], 's-', label=f'Validation {title_text}')
+
+        ax.set_xlabel('Epoch')
+        ax.set_ylabel(title_text)
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        ax.set_title(f'{title_text} over Epochs')
+
+    plt.suptitle(title, fontsize=16)
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        logger.info(f"Training history plot saved to {save_path}")
+
+    return fig
