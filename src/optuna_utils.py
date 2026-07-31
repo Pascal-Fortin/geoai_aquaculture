@@ -220,7 +220,7 @@ def create_objective_function(X_train: np.ndarray, y_train: np.ndarray,
                     )
 
                 feature_engineer_for_trial.fit(X_fold_train_processed)
-                X_fold_train_features = feature_engineer_for_trial.transform(X_fold_train_processed, training=True)  # Keep as DataFrame
+                X_fold_train_features = feature_engineer_for_trial.transform(X_fold_train_processed, training=True).values  # Convert to numpy array for consistency
 
                 # Validation features are already precomputed (2D)
                 X_fold_val_features = X_fold_val  # Already processed
