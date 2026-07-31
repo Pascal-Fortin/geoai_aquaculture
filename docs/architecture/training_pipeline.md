@@ -1881,10 +1881,18 @@ All feature engineering parameters are validated and logged to ensure experiment
 ### Computational Complexity
 
 #### Feature Engineering
-- **Time complexity**: O(n_samples × n_time_steps × n_bands) for basic operations
-- **Spectral indices**: O(n_samples × n_time_steps) per index (vectorized operations)
-- **Temporal statistics**: O(n_samples × n_features × n_time_steps) for rolling window operations
+- **Basic operations** (band extraction, masking, NaN conversion): O(n_samples × n_time_steps × n_bands)
+  Since n_time_steps=12 and n_bands=12 are constants, this simplifies to O(n_samples)
+- **Spectral indices** (NDVI, NDWI, etc.): O(n_samples × n_time_steps) per index
+  With 6 indices and constant n_time_steps=12: O(n_samples) per index
+- **Temporal statistics** (mean, std, min, max, amplitude, slope):
+  - For F_monthly base features: O(F_monthly × n_samples × n_time_steps)
+  - F_monthly grows linearly with enabled feature groups
+  - When all features enabled: F_monthly ≈ 276 (72+600 feature example)
+  - Results in dominant O(n_samples) term with large constant factor
 - **Memory usage**: O(n_samples × n_features) for feature storage
+  - Typical range: 200-2000+ features depending on configuration
+  - Example: 10,000 samples × 500 features × 8 bytes = ~40 MB
 
 #### Model Training
 - **Time complexity**: O(n_estimators × n_samples × log(n_samples) × n_features)
@@ -1938,32 +1946,6 @@ All feature engineering parameters are validated and logged to ensure experiment
    - Use SSD storage for faster I/O operations
    - Monitor CPU utilization and consider process affinity settings
 
-### Computational Complexity
-
-#### Feature Engineering
-*(Unchanged)*
-
-#### Model Training
-- **Time complexity**: O(n_estimators × n_samples × log(n_samples) × n_features)
-- **With CV**: Total complexity increases by factor of n_folds during optimization
-- **Typical runtime**: 10-300 seconds per model (highly variable)
-- **Optimization runtime**: O(n_trials × n_folds × training_complexity)
-
-#### Hyperparameter Optimization
-- **Total complexity**: O(n_trials × n_folds × training_complexity)
-- **With pruning**: ~30-70% of theoretical maximum
-- **Typical runtime**: 15-150 minutes for n_trials=100, n_folds=5
-
-### Memory Usage
-*(Largely unchanged - peak memory may increase slightly due to CV processing)*
-
-### Bottlenecks
-1. **Feature engineering computation** (CPU-bound)
-2. **Model training** (CPU-bound, multiplied by n_folds during optimization)
-3. **I/O operations** (disk-bound)
-
-### Optimization Strategies
-*(Largely unchanged - same strategies apply, just scaled by CV factor)*
 
 ## 20. Future Improvements
 
