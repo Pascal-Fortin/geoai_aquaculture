@@ -22,6 +22,7 @@ from .optuna_utils import create_objective_function, create_optuna_study, optimi
 from .evaluate import cross_validate_model, evaluate_model_performance
 from .metrics import competition_score, calculate_metrics
 from aquaculture.feature_engineering import AquacultureFeatureEngineer
+from sklearn.model_selection import train_test_split, StratifiedKFold
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +68,12 @@ class Trainer:
 
         # Set random seeds for reproducibility
         self._set_random_seeds(config.random_seed)
+
+        # Create experiment directory
+        self._create_experiment_directory()
+
+        # Save configuration
+        self._save_config()
 
         logger.info(f"Trainer initialized with model_type={config.model_type}")
 
@@ -259,6 +266,7 @@ class Trainer:
         logger.info(f"Generated {len(self.feature_names)} features")
 
         return X_features_df.values, y
+
     def _generate_validation_realizations(self, X: np.ndarray, y: np.ndarray) -> list:
         """
         Generate fixed validation realizations for consistent evaluation during Optuna.
@@ -335,16 +343,94 @@ class Trainer:
 
         return realizations
 
+    def _generate_validation_realizations_for_fold(self, X: np.ndarray, y: np.ndarray) -> list:
+        """
+        Generate fixed validation realizations for a specific fold (used during CV).
+
+        This is similar to _generate_validation_realizations but works on fold-specific data.
+
+        Parameters
+        ----------
+        X : np.ndarray
+            Raw input data for the fold of shape (n_samples, 12, 12) or (n_samples, 144) for flattened features
+        y : np.ndarray
+            Target labels for the fold
+
+        Returns
+        -------
+        list
+            List of tuples (X_realized, y) for each validation realization
+        """
+        realizations = []
+
+        # Store original simulate_mask setting
+        original_simulate_mask = self.feature_engineer.simulate_mask
+
+        for i in range(self.config.n_validation_realizations):
+            # Enable simulation for validation realization generation
+            self.feature_engineer.simulate_mask = True
+            # Use different random seed for each realization
+            self.feature_engineer.random_state = self.config.random_seed + i * 1000 + 10000  # Offset to avoid conflicts
+
+            # Prepare data (feature engineering) for this realization
+            # We need to temporarily create a feature engineer with the current settings
+            # to avoid interfering with the main feature_engineer state
+            temp_feature_engineer = AquacultureFeatureEngineer(
+                simulate_mask=True,  # Always simulate for validation realizations
+                random_state=self.config.random_seed + i * 1000 + 10000,  # Offset to avoid conflicts
+                window_length_probs=self.config.feature_engineering_config.window_length_probs,
+                start_month_distribution=self.config.feature_engineering_config.start_month_distribution,
+                s2_monthly_dropout=self.config.feature_engineering_config.s2_monthly_dropout,
+                include_optical=self.config.feature_engineering_config.include_optical,
+                include_sar=self.config.feature_engineering_config.include_sar,
+                include_cross_sensor_features=self.config.feature_engineering_config.include_cross_sensor_features,
+                include_temporal_statistics=self.config.feature_engineering_config.include_temporal_statistics,
+                include_metadata=self.config.feature_engineering_config.include_metadata
+            )
+
+            # Process the data through the temporary feature engineer
+            # This handles both 3D input and 2D input with 144 features
+            if X.ndim == 2:
+                if X.shape[1] == 144:  # 12 months * 12 bands
+                    # Reshape from (n_samples, 144) to (n_samples, 12, 12)
+                    # Assuming column order matches: [VH_01, VV_01, ..., swir2_01, VH_02, ..., swir2_12]
+                    X_processed = X.reshape((X.shape[0], 12, 12))
+                else:
+                    raise ValueError(
+                        f"Expected 2D input with 144 features (12 months × 12 bands), "
+                        f"got {X.shape[1]} features"
+                    )
+            elif X.ndim == 3 and X.shape[1] == 12 and X.shape[2] == 12:
+                # X is already in the correct 3D format
+                X_processed = X
+            else:
+                raise ValueError(
+                    f"Input must be 3-dimensional (n_samples, 12, 12) or 2D with 144 features, "
+                    f"got shape {X.shape}"
+                )
+
+            # Fit and transform the data with the temporary engineer
+            temp_feature_engineer.fit(X_processed)
+            X_realized = temp_feature_engineer.transform(X_processed, training=True)
+            realizations.append((X_realized.values, y))
+
+            logger.debug(f"Generated validation realization {i+1}/{self.config.n_validation_realizations} for fold")
+
+        # Restore original setting
+        self.feature_engineer.simulate_mask = original_simulate_mask
+
+        return realizations
+
     def fit(self, X: np.ndarray, y: np.ndarray) -> 'Trainer':
         """
         Fit the trainer to the training data.
 
         This method performs the complete training pipeline:
         1. Feature engineering
-        2. Train/validation split
+        2. Train/validation/test split (hold out test set for final evaluation)
         3. Generate validation realizations
         4. Hyperparameter optimization with Optuna
-        5. Train final model on full dataset
+        5. Train final model on combined train+val data (with validation for early stopping)
         6. Evaluate and save artifacts
 
         Parameters
@@ -359,58 +445,85 @@ class Trainer:
         self : Trainer
             Returns self for method chaining
         """
-        # Create experiment directory
-        self._create_experiment_directory()
+        # Perform train/validation/test split on RAW data
+        # First split: separate out test set (held out for final evaluation)
+        # Remaining data is used for cross-validation and hyperparameter tuning
 
-        # Save configuration
-        self._save_config()
+        # Use test_size parameter (validation is handled via cross-validation)
+        test_size = getattr(self.config, 'test_size', 0.2)
 
-        # Perform train/validation split on RAW data for hyperparameter tuning
-        from sklearn.model_selection import train_test_split
-        X_train_raw, X_val_raw, y_train, y_val = train_test_split(
+        # Validate that test_size < 1.0
+        if not 0.0 <= test_size < 1.0:
+            raise ValueError("test_size must be in [0.0, 1.0)")
+
+        # Single split: separate test set (held out for final evaluation)
+        X_train_val_raw, X_test_raw, y_train_val, y_test = train_test_split(
             X, y,
-            test_size=0.2,
+            test_size=test_size,
             random_state=self.config.random_seed,
             stratify=y
         )
 
-        # Prepare training data (feature engineering) - fixed seed for consistency
-        X_features_train, _ = self._prepare_data(X_train_raw, y_train, training=True)
-
-        # Prepare validation data for realizations (will be processed in _generate_validation_realizations)
-        # Note: _generate_validation_realizations will handle feature engineering with different seeds
-
-        # Prepare features for FULL dataset (needed for final training)
-        X_features_full, _ = self._prepare_data(X, y, training=True)
-
-        # Store classes for later use (from full dataset for consistency)
-        self.classes_ = np.unique(y)
+        # The remaining data (X_train_val, y_train_val) will be used for CV and hyperparameter tuning
+        # Store classes for later use (from training data for consistency to avoid data leakage)
+        self.classes_ = np.unique(y_train_val)
 
         # Log dataset information
-        logger.info(f"Dataset shape: {X_features_full.shape}")
-        logger.info(f"Class distribution: {np.bincount(y)}")
+        logger.info(f"Dataset shape: {X.shape}")
+        logger.info(f"Training data (for CV): {X_train_val_raw.shape}, Test set (held out): {X_test_raw.shape}")
+        logger.info(f"Class distribution (training): {np.bincount(y_train_val)}")
 
-        logger.info(f"Train set: {X_train_raw.shape}, Validation set: {X_val_raw.shape}")
+        # Prepare features for TEST dataset (held out for final evaluation)
+        X_features_test, _ = self._prepare_data(X_test_raw, y_test, training=True)
 
-        # Generate fixed validation realizations from RAW validation data
-        logger.info(f"Generating {self.config.n_validation_realizations} validation realization(s)...")
-        val_realizations = self._generate_validation_realizations(X_val_raw, y_val)
+        # Set up cross-validation
+        n_splits = self.config.n_splits
+        skf = StratifiedKFold(n_splits=n_splits, shuffle=True, random_state=self.config.random_seed)
 
-        # Use the first validation realization for hyperparameter optimization
-        X_val_features, _ = val_realizations[0]
+        # Generate CV splits
+        cv_splits = list(skf.split(X_train_val_raw, y_train_val))
 
-        # Optimize hyperparameters using Optuna
-        logger.info(f"Starting hyperparameter optimization with {self.config.n_trials} trials...")
+        # Pre-compute validation realizations for each fold
+        logger.info(f"Generating validation realizations for {n_splits} CV folds...")
+        val_features_list = []
+        val_labels_list = []
+
+        for fold_idx, (train_idx, val_idx) in enumerate(cv_splits):
+            # Get validation data for this fold (raw data)
+            X_val_fold_raw = X_train_val_raw[val_idx]
+            y_val_fold = y_train_val[val_idx]
+
+            # Generate validation realizations for this fold
+            # We use the same logic as _generate_validation_realizations but for fold-specific data
+            fold_val_realizations = self._generate_validation_realizations_for_fold(
+                X_val_fold_raw, y_val_fold
+            )
+
+            # Use the first realization (or average if multiple) for this fold's validation features
+            # For consistency with the original approach, we'll use the first realization
+            X_val_fold_features, _ = fold_val_realizations[0]
+
+            # Store the preprocessed validation features and labels for this fold
+            val_features_list.append(X_val_fold_features)
+            val_labels_list.append(y_val_fold)
+
+            logger.debug(f"Fold {fold_idx+1}: Prepared validation features with shape {X_val_fold_features.shape}")
+
+        # Prepare training data (we'll handle feature engineering inside the objective function)
+        # For now, we'll just store the raw data - feature engineering happens in objective
+        logger.info(f"Starting hyperparameter optimization with {self.config.n_trials} trials using {n_splits}-fold CV...")
         self.study, self.best_params = optimize_hyperparameters(
-            X_train=X_features_train,
-            y_train=y_train,
-            X_val=X_val_features,  # Use engineered features from first validation realization
-            y_val=y_val,
+            X_train=X_train_val_raw,  # Raw training data - feature engineering happens in objective
+            y_train=y_train_val,
+            val_features_list=val_features_list,  # Precomputed validation features for each fold
+            val_labels_list=val_labels_list,      # Validation labels for each fold
             model_type=self.config.model_type,
             n_trials=self.config.n_trials,
             timeout=self.config.timeout,
             random_state=self.config.random_seed,
             n_validation_realizations=self.config.n_validation_realizations,
+            n_splits=n_splits,
+            feature_engineer_config=self.config.feature_engineering_config,
             study_name=f"aquaculture_{self.config.model_type}_optimization",
             storage=None  # Could be made configurable
         )
@@ -420,28 +533,73 @@ class Trainer:
         from .optuna_utils import save_study
         save_study(self.study, study_path)
 
-        # Train final model with best parameters on full training data
-        logger.info("Training final model with best parameters...")
+        # Train final model with best parameters on ALL training data (everything except held-out test set)
+        logger.info("Training final model with best parameters on full training data...")
+
+        # Prepare features for full training data
+        X_features_train_full, _ = self._prepare_data(X_train_val_raw, y_train_val, training=True)
+
+        # Train final model (no validation set used, so early stopping is disabled)
         self.model = ModelFactory.create(
             model_type=self.config.model_type,
-            y_train=y,  # Use full dataset for class weighting
+            y_train=y_train_val,  # Use full training data for class weighting
             **self.best_params
         )
 
-        # Fit on full dataset
-        self.model.fit(X_features_full, y)
+        # Train on full training data
+        self.model.fit(X_features_train_full, y_train_val)
 
-        # Evaluate on training data
-        train_metrics = evaluate_model_performance(
-            self.model, X_features_full, y, model_name="Training"
+        # Evaluate on TEST data (held out from training entirely)
+        # We need to prepare features for the test set
+        X_features_test, _ = self._prepare_data(X_test_raw, y_test, training=True)
+
+        test_metrics = evaluate_model_performance(
+            self.model, X_features_test, y_test, model_name="Test"
         )
 
-        # Save training metrics
-        train_metrics_path = self.experiment_dir / "metrics.json"
-        with open(train_metrics_path, 'w') as f:
-            json.dump(train_metrics, f, indent=2)
+        # Save test metrics
+        test_metrics_path = self.experiment_dir / "test_metrics.json"
+        with open(test_metrics_path, 'w') as f:
+            json.dump(test_metrics, f, indent=2)
+        logger.info(f"Test metrics saved to {test_metrics_path}")
 
-        # Calculate feature importance
+        # Also evaluate on training data for overfitting comparison
+        train_metrics = evaluate_model_performance(
+            self.model, X_features_train_full, y_train_val, model_name="Training"
+        )
+
+        # For validation information, we report CV statistics from the study
+        # Get CV metrics from the best trial
+        best_trial = self.study.best_trial
+        cv_mean_score = best_trial.user_attrs.get("cv_mean_score", 0.0)
+        cv_std_score = best_trial.user_attrs.get("cv_std_score", 0.0)
+
+        # Log evaluation results
+        train_score = train_metrics.get('competition_score', 0)
+        test_score = test_metrics.get('competition_score', 0)
+
+        logger.info(f"Training score: {train_score:.4f}")
+        logger.info(f"Cross Validation (CV) score: {cv_mean_score:.4f} ± {cv_std_score:.4f}")
+        logger.info(f"Test set score: {test_score:.4f}")
+
+        # Calculate overfitting indicators (train vs test)
+        train_test_gap = train_score - test_score
+        logger.info(f"Train-Test gap: {train_test_gap:.4f}")
+        if train_test_gap > 0.1:  # Arbitrary threshold for significant overfitting
+            logger.warning(f"Large train-test gap ({train_test_gap:.4f}) suggests potential overfitting")
+
+        # Log individual fold scores from the best trial if available
+        fold_scores = []
+        for i in range(n_splits):
+            fold_score = best_trial.user_attrs.get(f"fold_{i}_score", 0.0)
+            if fold_score > 0:  # Only include valid scores
+                fold_scores.append(fold_score)
+        if fold_scores:
+            fold_min = min(fold_scores)
+            fold_max = max(fold_scores)
+            logger.info(f"CV Fold scores: Min={fold_min:.4f}, Max={fold_max:.4f}")
+
+        # Calculate feature importance (using training data statistics)
         if hasattr(self.model, 'feature_importances_') or hasattr(self.model, 'coef_'):
             from .evaluate import get_feature_importance
             importance_df = get_feature_importance(self.model, self.feature_names)
@@ -450,12 +608,6 @@ class Trainer:
             importance_path = self.experiment_dir / "features" / "feature_importance.csv"
             importance_df.to_csv(importance_path, index=False)
             logger.info(f"Feature importance saved to {importance_path}")
-
-        # Save the trained model
-        model_path = self.experiment_dir / "models" / "best_model.pkl"
-        with open(model_path, 'wb') as f:
-            pickle.dump(self.model, f)
-        logger.info(f"Model saved to {model_path}")
 
         # Save feature names
         feature_names_path = self.experiment_dir / "features" / "feature_names.json"
@@ -468,6 +620,12 @@ class Trainer:
         with open(params_path, 'w') as f:
             json.dump(self.best_params, f, indent=2)
         logger.info(f"Best parameters saved to {params_path}")
+
+        # Save the trained model separately for inference
+        model_path = self.experiment_dir / "models" / "best_model.pkl"
+        with open(model_path, 'wb') as f:
+            pickle.dump(self.model, f)
+        logger.info(f"Trained model saved to {model_path}")
 
         logger.info("Training completed successfully!")
         return self
@@ -501,6 +659,7 @@ class Trainer:
         # Make predictions
         predictions = self.model.predict(X_features)
         return predictions
+
     def predict_proba(self, X: np.ndarray, training: bool = False) -> np.ndarray:
         """
         Predict class probabilities on new data.
@@ -530,6 +689,7 @@ class Trainer:
         # Predict probabilities
         probabilities = self.model.predict_proba(X_features)
         return probabilities
+
     def save(self, directory: Optional[Union[str, Path]] = None) -> None:
         """
         Save the trainer and all associated artifacts.
