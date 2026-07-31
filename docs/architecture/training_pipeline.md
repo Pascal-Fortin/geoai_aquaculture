@@ -558,7 +558,8 @@ The feature engineering process creates six distinct feature groups:
 **Temporal resolution**: Monthly (12 months)  
 **Mathematical definitions**:
 - VH_VV_ratio = VH / VV (with division by zero protection → NaN)
-- VH_VV_diff = VH - VV  
+- VH_VV_diff = VH - VV
+
 **Motivation**: Captures radar backscatter characteristics sensitive to water surface roughness and vegetation structure  
 **Implementation**: `feature_engineering.py:transform()` lines 362-373
 
@@ -572,17 +573,23 @@ The feature engineering process creates six distinct feature groups:
 - NDMI = (NIR - SWIR1) / (NIR + SWIR1)
 - NDRE2 = (NIR - RE2) / (NIR + RE2)
 - NDRE3 = (NIR - RE3) / (NIR + RE3)
+
 **Motivation**: 
 - NDVI: Vegetation health and density
 - NDWI/MNDWI: Water content and moisture stress
 - NDRI: Vegetation chlorophyll content
+
 **Implementation**: `feature_engineering.py:transform()` lines 326-350 + `indices.py`
 
 #### 8.3 Optical Bands
 **Features**: Green, NIR, NNIR, SWIR1, SWIR2
+
 **Temporal resolution**: Monthly (12 months)
+
 **Note**: Excludes Blue, Red, RE1, RE2, RE3 as specified in requirements
+
 **Motivation**: Direct reflectance values for key spectral regions
+
 **Implementation**: `feature_engineering.py:transform()` lines 351-360
 
 #### 8.4 Cross-Sensor Features
@@ -591,16 +598,22 @@ The feature engineering process creates six distinct feature groups:
 - VH_NDVI_ratio, VV_NDVI_ratio  
 - VH_NDWI_mul, VV_NDWI_mul
 - VH_NDVI_mul, VV_NDVI_mul
+
 **Temporal resolution**: Monthly (12 months)
+
 **Mathematical definitions**:
 - Ratio: SAR_band / Optical_index
 - Multiplication: SAR_band × Optical_index
+
 **Motivation**: Captures relationships between radar structure and optical vegetation/water properties
+
 **Implementation**: `feature_engineering.py:transform()` lines 375-406
 
 #### 8.5 Temporal Statistics
 **Statistics**: mean, std, min, max, amplitude, slope
+
 **Applied to**: All base features (optical indices, optical bands, SAR, cross-sensor)
+
 **Mathematical definitions**:
 - Mean: Σxᵢ/n (with NaN handling per feature type)
 - Std: √(Σ(xᵢ-μ)²/(n-1)) (with NaN handling)
@@ -608,10 +621,13 @@ The feature engineering process creates six distinct feature groups:
 - Max: Maximum value in time series  
 - Amp: Max - Min
 - Slope: Linear regression slope over time (equal spacing)
+
 **NaN handling**:
 - Optical features: Ignore NaN values (use available observations)
 - SAR features: Propagate NaN (any NaN → NaN statistic)
+
 **Motivation**: Captures temporal dynamics and trends in satellite observations
+
 **Implementation**: `feature_engineering.py:transform()` lines 414-491 + `temporal.py`
 
 #### 8.6 Metadata Features
@@ -622,7 +638,9 @@ The feature engineering process creates six distinct feature groups:
 - n_optical_obs: Number of months with ≥1 valid S2 band observation
 - fraction_optical: n_optical_obs / 12.0
 - optical_obs_01 through optical_obs_12: Binary flags (1 if month had valid S2 obs)
+
 **Motivation**: Provides context about observation quality and timing
+
 **Implementation**: `feature_engineering.py:transform()` lines 507-531
 
 ### Feature Generation Example
@@ -644,6 +662,7 @@ Total: 72+60+48+96+138+17 = 431 features (with temporal stats)
 
 Without temporal statistics (disabled):
 Total: 72+60+48+96+17 = 293 features
+
 ## 9. Feature Matrix
 
 ### Output Structure
