@@ -1854,6 +1854,17 @@ TrainingConfig (src/config.py)
 
 While the structure of `AquacultureConfig` remains unchanged, its role has been emphasized throughout the updated pipeline documentation. This configuration object controls all aspects of the feature engineering process and is critical for reproducibility.
 
+### SHAP Configuration
+
+The training pipeline now supports SHAP (SHapley Additive exPlanations) for model interpretation and feature importance analysis. This can be enabled through the TrainingConfig:
+
+- `compute_shap`: Boolean flag to enable SHAP computation (default: False)
+- `shap_sample_size`: Number of background samples for SHAP explanation (default: 100)
+- `shap_plot_type`: Type of SHAP plot to generate ('dot', 'violin', 'bar') (default: "dot")
+- `shap_max_display`: Maximum number of features to display in SHAP plots (default: 20)
+
+When enabled, SHAP values are computed after model training and saved to the experiment directory, providing both numerical feature importance and visual explanations of model behavior.
+
 Key configuration groups that impact the pipeline:
 
 1. **Observation Process Simulation**
@@ -2012,6 +2023,14 @@ All feature engineering parameters are validated and logged to ensure experiment
 - **Uncertainty quantification standards**: Community standards for reporting prediction uncertainty
 - **Metadata enrichment**: Automated generation of comprehensive metadata for reproducibility
 - **Cross-domain transfer learning**: Techniques to leverage knowledge from related geographical regions or farming practices
+
+#### 20.3.5 SHAP Implementation
+- **SHAP integration**: Add SHAP (SHapley Additive exPlanations) support for model interpretation
+- **TreeExplainer optimization**: Utilize efficient TreeExplainer for tree-based models (LightGBM, CatBoost, XGBoost)
+- **Visualization suite**: Generate summary plots, dependence plots, and force plots for feature interpretation
+- **Feature importance comparison**: Compare SHAP values with traditional feature importance methods
+- **Computational efficiency**: Implement sampling strategies to control SHAP computation time
+- **Reproducibility**: Ensure SHAP computations use controlled random seeds for consistent results
 
 ### 20.4 Implementation Prioritization Framework
 
