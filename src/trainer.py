@@ -42,7 +42,7 @@ class Trainer:
     Parameters
     ----------
     config : TrainingConfig
-        Configuration object containing all training parameters
+        Training configuration
     """
 
     def __init__(self, config: TrainingConfig):
@@ -175,7 +175,7 @@ class Trainer:
         (exp_dir / "explanations").mkdir(exist_ok=True)
         (exp_dir / "plots").mkdir(exist_ok=True)
         log_dir = exp_dir / "logs"
-        log_dir.mkdir(exist_ok=True)
+        log_dir.mkdir(parents=True, exist_ok=True)
 
         self.experiment_dir = exp_dir
 
@@ -266,6 +266,7 @@ class Trainer:
         logger.info(f"Generated {len(self.feature_names)} features")
 
         return X_features_df.values, y
+
     def _generate_validation_realizations(self, X: np.ndarray, y: np.ndarray) -> list:
         """
         Generate fixed validation realizations for consistent evaluation during Optuna.
@@ -331,6 +332,7 @@ class Trainer:
             logger.debug(f"Generated validation realization {i+1}/{self.config.n_validation_realizations}")
 
         return realizations
+
     def _generate_validation_realizations_for_fold(self, X: np.ndarray, y: np.ndarray) -> list:
         """
         Generate fixed validation realizations for a specific fold (used during CV).
@@ -398,6 +400,7 @@ class Trainer:
             logger.debug(f"Generated validation realization {i+1}/{self.config.n_validation_realizations} for fold")
 
         return realizations
+
     def fit(self, X: np.ndarray, y: np.ndarray) -> 'Trainer':
         """
         Fit the trainer to the training data.
@@ -617,6 +620,121 @@ class Trainer:
             importance_df.to_csv(importance_path, index=False)
             logger.info(f"Feature importance saved to {importance_path}")
 
+        # Calculate SHAP values if enabled
+        if getattr(self.config, 'compute_shap', False):
+            try:
+                import shap
+
+                logger.info("Computing SHAP values for model interpretation...")
+
+                # Sample data for SHAP (to manage computational cost)
+                sample_size = min(self.config.shap_sample_size, len(X_features_train_full))
+                if sample_size < len(X_features_train_full):
+                    # Use random sampling with fixed seed for reproducibility
+                    sample_indices = np.random.RandomState(self.config.random_seed).choice(
+                        len(X_features_train_full), size=sample_size, replace=False
+                    )
+                    X_shap_sample = X_features_train_full[sample_indices]
+                    y_shap_sample = y_train_val[sample_indices]
+                else:
+                    X_shap_sample = X_features_train_full
+                    y_shap_sample = y_train_val
+
+                # Compute SHAP values
+                # For tree-based models, use TreeExplainer (much faster)
+                if self.config.model_type in ['lightgbm', 'catboost', 'xgboost']:
+                    explainer = shap.TreeExplainer(self.model)
+                    shap_values = explainer.shap_values(X_shap_sample)
+                    # For binary classification, take the positive class shap values
+                    if isinstance(shap_values, list):
+                        shap_values = shap_values[1]
+                else:
+                    # For other models, use KernelExplainer (slower but model-agnostic)
+                    # Use a smaller background sample for KernelExplainer
+                    background_size = min(50, len(X_shap_sample))
+                    background_indices = np.random.RandomState(self.config.random_seed + 1).choice(
+                        len(X_shap_sample), size=background_size, replace=False
+                    )
+                    background_data = X_shap_sample[background_indices]
+                    explainer = shap.KernelExplainer(self.model.predict_proba, background_data)
+                    shap_values = explainer.shap_values(X_shap_sample, nsamples=100)
+                    # For binary classification, take the positive class shap values
+                    if isinstance(shap_values, list):
+                        shap_values = shap_values[1]
+
+                # Compute and save SHAP feature importance
+                shap_importance = np.mean(np.abs(shap_values), axis=0)
+                shap_importance_df = pd.DataFrame({
+                    'feature': self.feature_names,
+                    'importance': shap_importance
+                }).sort_values('importance', ascending=False)
+
+                shap_importance_path = self.experiment_dir / "features" / "shap_feature_importance.csv"
+                shap_importance_df.to_csv(shap_importance_path, index=False)
+                logger.info(f"SHAP feature importance saved to {shap_importance_path}")
+
+                # Also save SHAP values and feature names for later use in notebooks
+                shap_npz_path = self.experiment_dir / "shap_values.npz"
+                np.savez(shap_npz_path, shap_values=shap_values, feature_names=self.feature_names)
+                logger.info(f"SHAP values and feature names saved to {shap_npz_path}")
+
+                # Generate and save SHAP plots
+                shap_plots_dir = self.experiment_dir / "plots" / "shap"
+                shap_plots_dir.mkdir(parents=True, exist_ok=True)
+
+                # Import plotting functions
+                from .plotting import plot_shap_summary
+
+                # Determine plot types to generate
+                plot_types = [self.config.shap_plot_type] if isinstance(self.config.shap_plot_type, str) else self.config.shap_plot_type
+
+                for plot_type in plot_types:
+                    try:
+                        plot_path = shap_plots_dir / f"shap_summary_{plot_type}.png"
+                        plot_shap_summary(
+                            shap_values=shap_values,
+                            feature_names=self.feature_names,
+                            X=X_shap_sample,
+                            plot_type=plot_type,
+                            max_display=self.config.shap_max_display,
+                            title=f"SHAP Summary Plot ({plot_type})",
+                            save_path=plot_path
+                        )
+                        logger.info(f"SHAP {plot_type} plot saved to {plot_path}")
+                    except Exception as e:
+                        logger.warning(f"Failed to generate SHAP {plot_type} plot: {str(e)}")
+
+                # Create dependence plots for top features
+                try:
+                    from .plotting import plot_shap_dependence
+                    top_n = min(5, len(self.feature_names))  # Top 5 features
+                    top_feature_indices = np.argsort(np.mean(np.abs(shap_values), axis=0))[::-1][:top_n]
+
+                    for feat_idx in top_feature_indices:
+                        feature_name = self.feature_names[feat_idx]
+                        try:
+                            plot_path = shap_plots_dir / f"shap_dependence_{feature_name}.png"
+                            plot_shap_dependence(
+                                shap_values=shap_values,
+                                feature_names=self.feature_names,
+                                feature_index=feat_idx,
+                                X=X_shap_sample,
+                                title=f"SHAP Dependence Plot: {feature_name}",
+                                save_path=plot_path
+                            )
+                            logger.info(f"SHAP dependence plot for {feature_name} saved to {plot_path}")
+                        except Exception as e:
+                            logger.warning(f"Failed to generate SHAP dependence plot for {feature_name}: {str(e)}")
+                except ImportError:
+                    pass  # plot_shap_dependence might not be available
+
+                logger.info(f"SHAP analysis completed and saved to {shap_plots_dir}")
+
+            except ImportError:
+                logger.warning("SHAP not available. Skipping SHAP analysis. Install shap to enable SHAP features.")
+            except Exception as e:
+                logger.warning(f"SHAP computation failed: {str(e)}. Continuing without SHAP analysis.")
+
         # Save feature names
         feature_names_path = self.experiment_dir / "features" / "feature_names.json"
         with open(feature_names_path, 'w') as f:
@@ -637,6 +755,7 @@ class Trainer:
 
         logger.info("Training completed successfully!")
         return self
+
     def predict(self, X: np.ndarray, training: bool = False) -> np.ndarray:
         """
         Make predictions on new data.

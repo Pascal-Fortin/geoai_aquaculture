@@ -48,6 +48,14 @@ class TrainingConfig:
         Whether to enable file logging to experiment directory
     log_level_file : str, default='INFO'
         Logging level for file output (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+    compute_shap : bool, default=False
+        Whether to compute SHAP values for model interpretation
+    shap_sample_size : int, default=100
+        Number of background samples to use for SHAP explanation (lower values faster but less accurate)
+    shap_plot_type : str, default="dot"
+        Type of SHAP plot to generate ('dot', 'violin', 'bar')
+    shap_max_display : int, default=20
+        Maximum number of features to display in SHAP plots
     """
 
     model_type: str = 'lightgbm'
@@ -65,6 +73,11 @@ class TrainingConfig:
     # Logging configuration options
     enable_file_logging: bool = True
     log_level_file: str = 'INFO'
+    # SHAP configuration options
+    compute_shap: bool = False
+    shap_sample_size: int = 100
+    shap_plot_type: str = "dot"
+    shap_max_display: int = 20
 
     def __post_init__(self):
         """Validate configuration after initialization."""
@@ -83,6 +96,17 @@ class TrainingConfig:
 
         if self.n_validation_realizations not in [1, 5]:
             raise ValueError("n_validation_realizations must be 1 or 5")
+
+        # Validate SHAP parameters
+        if self.shap_sample_size < 1:
+            raise ValueError("shap_sample_size must be at least 1")
+
+        valid_plot_types = ['dot', 'violin', 'bar']
+        if self.shap_plot_type not in valid_plot_types:
+            raise ValueError(f"shap_plot_type must be one of {valid_plot_types}")
+
+        if self.shap_max_display < 1:
+            raise ValueError("shap_max_display must be at least 1")
 
         # Initialize feature engineering config if not provided
         if self.feature_engineering_config is None:

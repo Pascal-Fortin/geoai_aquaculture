@@ -13,6 +13,7 @@ import logging
 import matplotlib.pyplot as plt
 import json
 import os
+from pathlib import Path
 
 from .metrics import calculate_metrics, competition_score
 
@@ -419,3 +420,177 @@ def plot_training_history(trainer_history: dict,
         logger.info(f"Training history plot saved to {save_path}")
 
     return fig
+
+
+def get_shap_values(model, X: np.ndarray, feature_names: List[str],
+                    sample_size: int = 100) -> np.ndarray:
+    """
+    Compute SHAP values for a trained model.
+
+    Parameters
+    ----------
+    model : sklearn estimator
+        Trained model to explain
+    X : np.ndarray
+        Feature matrix to explain
+    feature_names : List[str]
+        Names of features
+    sample_size : int, default=100
+        Number of background samples to use for SHAP (for computational efficiency)
+
+    Returns
+    -------
+    np.ndarray
+        SHAP values with shape (n_samples, n_features)
+    """
+    try:
+        import shap
+    except ImportError:
+        raise ImportError("SHAP is not available. Please install shap to use this function.")
+
+    # Use a smaller background dataset for efficiency if needed
+    if len(X) > sample_size:
+        # Use random sampling for background dataset
+        background = shap.sample(X, sample_size, random_state=42)
+    else:
+        background = X
+
+    # Choose appropriate explainer based on model type
+    if hasattr(model, 'feature_importances_') or hasattr(model, 'coef_'):
+        # Tree-based models (including ensembles) and linear models
+        explainer = shap.TreeExplainer(model) if hasattr(model, 'feature_importances_') else shap.LinearExplainer(model, background)
+        shap_values = explainer.shap_values(X)
+    else:
+        # For other models, use KernelExplainer (slower but more general)
+        explainer = shap.KernelExplainer(model.predict_proba if hasattr(model, 'predict_proba') else model.predict, background)
+        shap_values = explainer.shap_values(X, nsamples=100)
+
+    # For multi-class models, shap_values is a list of arrays (one per class)
+    # For binary classification, we typically want the positive class (index 1)
+    if isinstance(shap_values, list):
+        # For binary classification, return SHAP values for positive class
+        if len(shap_values) == 2:
+            return shap_values[1]
+        else:
+            # For multi-class, sum absolute values across classes or use first class
+            # Here we'll use the absolute mean across classes for feature importance
+            return np.mean(np.abs(np.array(shap_values)), axis=0)
+    else:
+        return shap_values
+
+
+def get_shap_feature_importance(shap_values: np.ndarray, feature_names: List[str]) -> pd.DataFrame:
+    """
+    Compute feature importance from SHAP values.
+
+    Parameters
+    ----------
+    shap_values : np.ndarray
+        SHAP values with shape (n_samples, n_features)
+    feature_names : List[str]
+        Names of features
+
+    Returns
+    -------
+    pd.DataFrame
+        DataFrame with columns ['feature', 'importance'] sorted by importance descending
+    """
+    # Calculate mean absolute SHAP value for each feature
+    mean_abs_shap = np.mean(np.abs(shap_values), axis=0)
+
+    # Create DataFrame
+    importance_df = pd.DataFrame({
+        'feature': feature_names,
+        'importance': mean_abs_shap
+    })
+
+    # Sort by importance descending
+    importance_df = importance_df.sort_values('importance', ascending=False).reset_index(drop=True)
+
+    return importance_df
+
+
+def save_shap_analysis(shap_values: np.ndarray, X: np.ndarray, feature_names: List[str],
+                      experiment_dir: Union[str, Path], plot_types: List[str] = ["dot"],
+                      max_display: int = 20) -> None:
+    """
+    Generate and save SHAP visualizations.
+
+    Parameters
+    ----------
+    shap_values : np.ndarray
+        SHAP values with shape (n_samples, n_features)
+    X : np.ndarray
+        Feature matrix used for SHAP explanation
+    feature_names : List[str]
+        Names of features
+    experiment_dir : Union[str, Path]
+        Directory to save SHAP plots and data
+    plot_types : List[str], default=["dot"]
+        Types of SHAP plots to generate ('dot', 'violin', 'bar')
+    max_display : int, default=20
+        Maximum number of features to display in plots
+    """
+    try:
+        import shap
+        from .plotting import plot_shap_summary
+    except ImportError:
+        raise ImportError("SHAP or plotting module is not available. Please install required packages.")
+
+    experiment_dir = Path(experiment_dir)
+    experiment_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save SHAP values and feature names for later use
+    shap_data_path = experiment_dir / "shap_values.npz"
+    np.savez(shap_data_path, shap_values=shap_values, feature_names=feature_names)
+
+    # Save feature importance
+    importance_df = get_shap_feature_importance(shap_values, feature_names)
+    importance_path = experiment_dir / "shap_feature_importance.csv"
+    importance_df.to_csv(importance_path, index=False)
+
+    # Generate plots
+    valid_plot_types = ['dot', 'violin', 'bar']
+    for plot_type in plot_types:
+        if plot_type not in valid_plot_types:
+            logger.warning(f"Unsupported plot type '{plot_type}'. Skipping.")
+            continue
+
+        try:
+            plot_path = experiment_dir / f"shap_summary_{plot_type}.png"
+            plot_shap_summary(
+                shap_values=shap_values,
+                feature_names=feature_names,
+                X=X,
+                plot_type=plot_type,
+                max_display=max_display,
+                title=f"SHAP Summary Plot ({plot_type})",
+                save_path=plot_path
+            )
+        except Exception as e:
+            logger.warning(f"Failed to generate SHAP {plot_type} plot: {str(e)}")
+
+    # Also create dependence plots for top features
+    try:
+        from .plotting import plot_shap_dependence
+        top_n = min(5, len(feature_names))  # Top 5 features
+        top_feature_indices = np.argsort(np.mean(np.abs(shap_values), axis=0))[::-1][:top_n]
+
+        for i, feat_idx in enumerate(top_feature_indices):
+            feature_name = feature_names[feat_idx]
+            try:
+                plot_path = experiment_dir / f"shap_dependence_{feature_name}.png"
+                plot_shap_dependence(
+                    shap_values=shap_values,
+                    feature_names=feature_names,
+                    feature_index=feat_idx,
+                    X=X,
+                    title=f"SHAP Dependence Plot: {feature_name}",
+                    save_path=plot_path
+                )
+            except Exception as e:
+                logger.warning(f"Failed to generate SHAP dependence plot for {feature_name}: {str(e)}")
+    except ImportError:
+        pass  # plot_shap_dependence might not be available
+
+    logger.info(f"SHAP analysis saved to {experiment_dir}")
