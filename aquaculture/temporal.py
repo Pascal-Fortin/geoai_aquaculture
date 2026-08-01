@@ -40,15 +40,15 @@ def _ignore_nans_1d(arr: np.ndarray) -> np.ndarray:
 
 
 def _safe_mean(arr: np.ndarray, ignore_nans: bool) -> float:
-    """Compute mean of array, optionally ignoring NaNs.
+    """Compute mean of array, optionally ignoring NaNs and Infs.
 
     Parameters
     ----------
     arr : np.ndarray
         Input array.
     ignore_nans : bool
-        If True, NaN values are ignored in the calculation.
-        If False, NaN values propagate (result is NaN if any NaN present).
+        If True, NaN and Inf values are ignored in the calculation.
+        If False, NaN or Inf values propagate (result is NaN if any NaN or Inf present).
 
     Returns
     -------
@@ -56,23 +56,27 @@ def _safe_mean(arr: np.ndarray, ignore_nans: bool) -> float:
         Mean of the array.
     """
     if ignore_nans:
-        return np.nanmean(arr)
+        # Create mask for valid values (not NaN and not Inf)
+        valid_mask = ~(np.isnan(arr) | np.isinf(arr))
+        if not np.any(valid_mask):
+            return np.nan
+        return np.mean(arr[valid_mask])
     else:
-        if np.any(np.isnan(arr)):
+        if np.any(np.isnan(arr)) or np.any(np.isinf(arr)):
             return np.nan
         return np.mean(arr)
 
 
 def _safe_std(arr: np.ndarray, ignore_nans: bool) -> float:
-    """Compute standard deviation of array, optionally ignoring NaNs.
+    """Compute standard deviation of array, optionally ignoring NaNs and Infs.
 
     Parameters
     ----------
     arr : np.ndarray
         Input array.
     ignore_nans : bool
-        If True, NaN values are ignored in the calculation.
-        If False, NaN values propagate (result is NaN if any NaN present).
+        If True, NaN and Inf values are ignored in the calculation.
+        If False, NaN or Inf values propagate (result is NaN if any NaN or Inf present).
 
     Returns
     -------
@@ -80,23 +84,28 @@ def _safe_std(arr: np.ndarray, ignore_nans: bool) -> float:
         Standard deviation of the array.
     """
     if ignore_nans:
-        return np.nanstd(arr, ddof=1)
+        # Create mask for valid values (not NaN and not Inf)
+        valid_mask = ~(np.isnan(arr) | np.isinf(arr))
+        valid_vals = arr[valid_mask]
+        if len(valid_vals) < 2:
+            return np.nan
+        return np.std(valid_vals, ddof=1)
     else:
-        if np.any(np.isnan(arr)):
+        if np.any(np.isnan(arr)) or np.any(np.isinf(arr)):
             return np.nan
         return np.std(arr, ddof=1)
 
 
 def _safe_min(arr: np.ndarray, ignore_nans: bool) -> float:
-    """Compute minimum of array, optionally ignoring NaNs.
+    """Compute minimum of array, optionally ignoring NaNs and Infs.
 
     Parameters
     ----------
     arr : np.ndarray
         Input array.
     ignore_nans : bool
-        If True, NaN values are ignored in the calculation.
-        If False, NaN values propagate (result is NaN if any NaN present).
+        If True, NaN and Inf values are ignored in the calculation.
+        If False, NaN or Inf values propagate (result is NaN if any NaN or Inf present).
 
     Returns
     -------
@@ -104,23 +113,27 @@ def _safe_min(arr: np.ndarray, ignore_nans: bool) -> float:
         Minimum of the array.
     """
     if ignore_nans:
-        return np.nanmin(arr)
+        # Create mask for valid values (not NaN and not Inf)
+        valid_mask = ~(np.isnan(arr) | np.isinf(arr))
+        if not np.any(valid_mask):
+            return np.nan
+        return np.min(arr[valid_mask])
     else:
-        if np.any(np.isnan(arr)):
+        if np.any(np.isnan(arr)) or np.any(np.isinf(arr)):
             return np.nan
         return np.min(arr)
 
 
 def _safe_max(arr: np.ndarray, ignore_nans: bool) -> float:
-    """Compute maximum of array, optionally ignoring NaNs.
+    """Compute maximum of array, optionally ignoring NaNs and Infs.
 
     Parameters
     ----------
     arr : np.ndarray
         Input array.
     ignore_nans : bool
-        If True, NaN values are ignored in the calculation.
-        If False, NaN values propagate (result is NaN if any NaN present).
+        If True, NaN and Inf values are ignored in the calculation.
+        If False, NaN or Inf values propagate (result is NaN if any NaN or Inf present).
 
     Returns
     -------
@@ -128,9 +141,13 @@ def _safe_max(arr: np.ndarray, ignore_nans: bool) -> float:
         Maximum of the array.
     """
     if ignore_nans:
-        return np.nanmax(arr)
+        # Create mask for valid values (not NaN and not Inf)
+        valid_mask = ~(np.isnan(arr) | np.isinf(arr))
+        if not np.any(valid_mask):
+            return np.nan
+        return np.max(arr[valid_mask])
     else:
-        if np.any(np.isnan(arr)):
+        if np.any(np.isnan(arr)) or np.any(np.isinf(arr)):
             return np.nan
         return np.max(arr)
 
@@ -145,8 +162,8 @@ def _linear_trend(
     arr : np.ndarray
         1D array of values over time (assumed equally spaced).
     ignore_nans : bool
-        If True, NaN values are ignored by fitting to non-NaN points.
-        If False, if any NaN is present, returns NaN.
+        If True, NaN and Inf values are ignored by fitting to non-NaN/non-Inf points.
+        If False, if any NaN or Inf is present, returns NaN.
 
     Returns
     -------
@@ -155,19 +172,19 @@ def _linear_trend(
         valid points are available.
     """
     if ignore_nans:
-        # Extract non-NaN values and their indices
-        valid = ~np.isnan(arr)
+        # Extract non-NaN and non-Inf values and their indices
+        valid = ~(np.isnan(arr) | np.isinf(arr))
         if np.sum(valid) < 2:
             return np.nan
         x = np.where(valid)[0].astype(float)
         y = arr[valid]
     else:
-        # If any NaN present, return NaN (as per "use all available months"
+        # If any NaN or Inf present, return NaN (as per "use all available months"
         # but if any missing, we cannot compute trend? Actually requirement:
         # "SAR statistics always use all available months." For trend, if there
         # is a NaN, we cannot compute a linear fit. We'll follow the same
         # logic as mean/std: if any NaN, return NaN.
-        if np.any(np.isnan(arr)):
+        if np.any(np.isnan(arr)) or np.any(np.isinf(arr)):
             return np.nan
         x = np.arange(len(arr), dtype=float)
         y = arr
@@ -239,11 +256,14 @@ def compute_temporal_stats(
             std_val = _safe_std(series, ignore_nans)
             min_val = _safe_min(series, ignore_nans)
             max_val = _safe_max(series, ignore_nans)
-            amp_val = (
-                max_val - min_val
-                if not (np.isnan(min_val) or np.isnan(max_val))
-                else np.nan
-            )
+            # Check for infinite values that would cause invalid subtraction
+            if np.isnan(min_val) or np.isnan(max_val):
+                amp_val = np.nan
+            elif np.isinf(min_val) and np.isinf(max_val) and np.sign(min_val) == np.sign(max_val):
+                # Both are infinite with same sign (e.g., Inf-Inf or -Inf-(-Inf)) -> undefined
+                amp_val = np.nan
+            else:
+                amp_val = max_val - min_val
             slope_val = _linear_trend(series, ignore_nans)
             # Store
             base_idx = feat_idx * n_stats
