@@ -316,9 +316,11 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
             start_months = np.zeros(n_samples, dtype=int)
             end_months = np.full(n_samples, 11, dtype=int)
             X_masked = X.copy()
-            # No masking, so no values set to -9999
-            # We'll create a dummy mask of all True for consistency
-            s2_mask = np.ones((n_samples, 12, 10), dtype=bool)
+            # No masking simulation, but we should still reflect actual missing data in the mask
+            # S2 bands are indices 2-11
+            s2_mask = (X[:, :, 2:12] != -9999.0)  # True where data is NOT missing
+            # Note: We don't set values to -9999 since we're not simulating masking
+            # The actual -9999 values remain in X_masked and will be converted to NaN below
 
         # Convert masking sentinel values (-9999) to NaN for proper handling in downstream computations
         X_masked[X_masked == -9999.0] = np.nan
