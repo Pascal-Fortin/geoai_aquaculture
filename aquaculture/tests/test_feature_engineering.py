@@ -417,6 +417,96 @@ def test_feature_order_consistency_across_configs():
         assert name1 == name2, f"Feature names differ at index {i}: '{name1}' vs '{name2}'"
 
 
+def test_cross_sensor_division_by_zero():
+    """Test that cross-sensor ratios produce NaN when denominator is zero."""
+    # Create a deterministic dataset: 1 sample, 12 months, 12 bands
+    np.random.seed(42)
+    X = np.ones((1, 12, 12), dtype=np.float64) * 0.1  # default small value to avoid zeros elsewhere
+
+    # Band order: 0:VH,1:VV,2:blue,3:green,4:nir,5:nira,6:re1,7:re2,8:re3,9:red,10:swir1,11:swir2
+    # Set NIR (band 4) and Red (band 9) equal to get NDVI = 0
+    X[:, :, 4] = 0.5  # NIR
+    X[:, :, 9] = 0.5  # Red
+    # NDVI = (0.5-0.5)/(0.5+0.5) = 0/1 = 0
+
+    # Set Green (band 3) and SWIR1 (band 10) equal to get NDWI = 0
+    X[:, :, 3] = 0.5  # Green
+    X[:, :, 10] = 0.5 # SWIR1
+    # NDWI = (0.5-0.5)/(0.5+0.5) = 0/1 = 0
+
+    # Set SAR bands to non-zero to avoid zero division there
+    X[:, :, 0] = 0.6  # VH
+    X[:, :, 1] = 0.7  # VV
+
+    # Other bands keep default 0.1 (non-zero)
+
+    # Create feature engineer with cross-sensor features enabled
+    fe = AquacultureFeatureEngineer(
+        simulate_mask=False,  # No masking for deterministic test
+        random_state=42,
+        include_optical=True,
+        include_sar=True,
+        include_cross_sensor_features=True,
+        include_temporal_statistics=False,  # Disable for simpler checking
+        include_metadata=False
+    )
+
+    fe.fit(X)
+    df = fe.transform(X, training=False)
+    feature_names = fe.get_feature_names_out()
+
+    # Based on our verification, the ordering is:
+    # Each month has 23 features: 11 optical + 4 SAR + 8 cross
+    # Within cross features (indices 15-22 per month):
+    #   Indices 15-18: ratio features (VH_NDWI_ratio, VV_NDWI_ratio, VH_NDVI_ratio, VV_NDVI_ratio)
+    #   Indices 19-22: multiplication features (VH_NDWI_mul, VV_NDWI_mul, VH_NDVI_mul, VV_NDVI_mul)
+    n_features_per_month = 23
+    n_optical = 11
+    n_sar = 4
+    n_cross = 8
+    n_cross_ratio = 4  # first 4 of cross features are ratios
+    n_months = 12
+
+    # For each month, check that the four ratio features are NaN where denominator is zero
+    for month in range(n_months):
+        base_idx = month * n_features_per_month  # start of this month's features
+        ratio_start = base_idx + n_optical + n_sar  # index of first ratio feature
+        # Expected ratio names for this month
+        month_str = f"{month+1:02d}"
+        expected_ratio_names = [
+            f"VH_NDWI_ratio_{month_str}",
+            f"VV_NDWI_ratio_{month_str}",
+            f"VH_NDVI_ratio_{month_str}",
+            f"VV_NDVI_ratio_{month_str}"
+        ]
+        # Verify names match
+        for i, expected_name in enumerate(expected_ratio_names):
+            actual_name = feature_names[ratio_start + i]
+            assert actual_name == expected_name, f"Expected {expected_name} at index {ratio_start+i}, got {actual_name}"
+
+        # Get the values for these four features
+        ratio_values = df.iloc[0, ratio_start:ratio_start + n_cross_ratio].values
+        # Since NDWI and NDVI are zero for all months (we set them constant), denominators are zero -> should be NaN
+        assert np.all(np.isnan(ratio_values)), f"Expected NaN for ratio features in month {month+1}, got {ratio_values}"
+
+    # Additionally, verify that multiplication features (last four of cross) are zero (since VH*0 etc)
+    for month in range(n_months):
+        base_idx = month * n_features_per_month
+        mul_start = base_idx + n_optical + n_sar + n_cross_ratio  # index of first multiplication feature
+        expected_mul_names = [
+            f"VH_NDWI_mul_{month+1:02d}",
+            f"VV_NDWI_mul_{month+1:02d}",
+            f"VH_NDVI_mul_{month+1:02d}",
+            f"VV_NDVI_mul_{month+1:02d}"
+        ]
+        for i, expected_name in enumerate(expected_mul_names):
+            actual_name = feature_names[mul_start + i]
+            assert actual_name == expected_name, f"Expected {expected_name} at index {mul_start+i}, got {actual_name}"
+        mul_values = df.iloc[0, mul_start:mul_start + 4].values
+        # Since NDWI and NDVI are zero, products should be zero (VH*0 = 0, VV*0 = 0)
+        assert np.all(mul_values == 0.0), f"Expected zero for multiplication features in month {month+1}, got {mul_values}"
+
+
 if __name__ == "__main__":
     print("Testing AquacultureFeatureEngineer...")
     test_basic_functionality()
@@ -426,4 +516,5 @@ if __name__ == "__main__":
     test_feature_order_matches_transform()
     test_feature_order_with_temporal_stats()
     test_feature_order_consistency_across_configs()
+    test_cross_sensor_division_by_zero()
     print("All tests passed!")

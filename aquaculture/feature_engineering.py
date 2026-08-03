@@ -384,8 +384,11 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
                 vv_ndwi_ratio = np.true_divide(vv, ndwi)
                 vh_ndvi_ratio = np.true_divide(vh, ndvi)
                 vv_ndvi_ratio = np.true_divide(vv, ndvi)
-                # Set NaN where denominator is zero or denominator is NaN
-                # The above already handles division by zero, but if denominator is NaN, result is NaN.
+            # Set NaN where denominator is zero
+            vh_ndwi_ratio[ndwi == 0] = np.nan
+            vv_ndwi_ratio[ndwi == 0] = np.nan
+            vh_ndvi_ratio[ndvi == 0] = np.nan
+            vv_ndvi_ratio[ndvi == 0] = np.nan
             vh_ndwi_mul = vh * ndwi
             vv_ndwi_mul = vv * ndwi
             vh_ndvi_mul = vh * ndvi
