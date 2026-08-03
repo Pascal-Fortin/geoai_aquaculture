@@ -575,6 +575,73 @@ def test_observation_window_from_sar_data():
                                   "End months do not match expected values")
 
 
+def test_fraction_optical_calculation():
+    """Test that fraction_optical is correctly computed as n_optical_obs / window_lengths."""
+    # Create test data: 3 samples, 12 months, 12 bands
+    np.random.seed(123)
+    n_samples = 3
+    X = np.full((n_samples, 12, 12), -9999.0, dtype=np.float64)  # Start with all missing
+
+    # Band order: 0:VH,1:VV,2:blue,3:green,4:nir,5:nira,6:re1,7:re2,8:re3,9:red,10:swir1,11:swir2
+
+    # Sample 0: SAR available months 0-2 (Jan-Mar) -> window_length=3
+    #   Make S2 data available in months 0 and 2 (Jan and Mar) -> n_optical_obs=2 -> expected fraction = 2/3
+    X[0, 0:3, 0] = 0.5  # VH available Jan-Mar
+    X[0, 0:3, 1] = 0.6  # VV available Jan-Mar
+    # S2 data: make Jan and Mar have some valid data, Feb missing
+    # Month 0 (Jan): set S2 bands to 0.1
+    X[0, 0, 2:12] = 0.1
+    # Month 1 (Feb): leave as -9999.0 (all S2 bands missing)
+    # Month 2 (Mar): set S2 bands to 0.1
+    X[0, 2, 2:12] = 0.1
+
+    # Sample 1: SAR available months 3-8 (Apr-Sep) -> window_length=6
+    #   Make S2 data available in months 3,5,6,8 (Apr,Jun,Jul,Sep) -> n_optical_obs=4 -> expected fraction = 4/6 = 2/3
+    X[1, 3:9, 0] = 0.5  # VH available Apr-Sep
+    X[1, 3:9, 1] = 0.6  # VV available Apr-Sep
+    # S2 data: set months 3,5,6,8 to 0.1, others to -9999.0
+    for m in [3,5,6,8]:
+        X[1, m, 2:12] = 0.1
+    # months 4,7 remain -9999.0
+
+    # Sample 2: SAR available months 9-11 (Oct-Dec) -> window_length=3
+    #   No S2 data available (all months missing) -> n_optical_obs=0 -> expected fraction = 0/3 = 0
+    X[2, 9:12, 0] = 0.5  # VH available Oct-Dec
+    X[2, 9:12, 1] = 0.6  # VV available Oct-Dec
+    # leave all S2 bands as -9999.0
+
+    # Create feature engineer with metadata enabled
+    fe = AquacultureFeatureEngineer(
+        simulate_mask=False,  # Use actual SAR data to determine windows
+        random_state=42,
+        include_optical=True,
+        include_sar=True,
+        include_cross_sensor_features=False,
+        include_temporal_statistics=False,
+        include_metadata=True  # Enable to get fraction_optical
+    )
+
+    fe.fit(X)
+    df = fe.transform(X, training=False)  # training=False to use actual SAR/S2 data
+
+    # Get feature names to locate fraction_optical
+    feature_names = list(fe.get_feature_names_out())
+    try:
+        fraction_idx = feature_names.index("fraction_optical")
+    except ValueError as e:
+        raise AssertionError(f"Could not find fraction_optical feature: {e}")
+
+    # Extract the fraction values for each sample
+    fractions = df.iloc[:, fraction_idx].values
+
+    # Expected fractions
+    expected = np.array([2/3, 4/6, 0/3])  # [0.666..., 0.666..., 0.0]
+
+    # Check that we got the expected values (within tolerance)
+    np.testing.assert_allclose(fractions, expected, rtol=1e-6,
+                               err_msg="fraction_optical values do not match expected")
+
+
 if __name__ == "__main__":
     print("Testing AquacultureFeatureEngineer...")
     test_basic_functionality()
@@ -585,4 +652,6 @@ if __name__ == "__main__":
     test_feature_order_with_temporal_stats()
     test_feature_order_consistency_across_configs()
     test_cross_sensor_division_by_zero()
+    test_observation_window_from_sar_data()
+    test_fraction_optical_calculation()
     print("All tests passed!")

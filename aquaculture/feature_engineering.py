@@ -492,7 +492,7 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
             # We consider a month to have an optical observation if any of the 10 bands is kept.
             optical_obs_per_month = np.any(s2_mask, axis=2)  # shape (n_samples, 12)
             n_optical_obs = np.sum(optical_obs_per_month, axis=1)  # shape (n_samples,)
-            fraction_optical = n_optical_obs / 12.0
+            fraction_optical = n_optical_obs / window_lengths
 
             # Stack metadata features
             # Shape (n_samples, 5 + 12) = (n_samples, 17)
