@@ -56,6 +56,7 @@ class Trainer:
         """
         self.config = config
         self.feature_engineer = None
+        self.feature_selector = None
         self.model = None
         self.best_params = None
         self.study = None
@@ -210,7 +211,7 @@ class Trainer:
         Returns
         -------
         tuple
-            (X_features, y) where X_features is the engineered feature matrix
+            (X_features, y) where X_features is the engineered feature matrix (after feature selection if enabled)
         """
         logger.info("Applying feature engineering...")
 
@@ -261,11 +262,31 @@ class Trainer:
             self._last_X_features = X_features_df.copy()
             self._last_training = training
 
-        # Store feature names
-        self.feature_names = list(X_features_df.columns)
-        logger.info(f"Generated {len(self.feature_names)} features")
+        # Apply feature selection if enabled
+        if self.config.feature_selection_enabled and self.feature_selector is None:
+            # Create feature selector based on configuration
+            from aquaculture.feature_selection import FeatureSelector
+            self.feature_selector = FeatureSelector(
+                self.feature_engineer,
+                selection_method=self.config.feature_selection_method,
+                **self.config.feature_selection_kwargs
+            )
+            logger.info(f"Feature selector created with method '{self.config.feature_selection_method}' "
+                        f"and kwargs {self.config.feature_selection_kwargs}")
 
-        return X_features_df.values, y
+        # Apply feature selection if enabled
+        if self.config.feature_selection_enabled and self.feature_selector is not None:
+            # Apply feature selection to get selected features
+            X_selected_df = self.feature_selector.transform(X, training=training)
+            logger.info(f"Feature selection applied: {X_features_df.shape[1]} -> {X_selected_df.shape[1]} features")
+
+            # Store selected feature names
+            self.feature_names = list(X_selected_df.columns)
+            return X_selected_df.values, y
+        else:
+            # Store all feature names (when feature selection is disabled)
+            self.feature_names = list(X_features_df.columns)
+            return X_features_df.values, y
 
     def _generate_validation_realizations(self, X: np.ndarray, y: np.ndarray) -> list:
         """

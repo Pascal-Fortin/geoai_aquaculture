@@ -56,6 +56,12 @@ class TrainingConfig:
         Type of SHAP plot to generate ('dot', 'violin', 'bar')
     shap_max_display : int, default=20
         Maximum number of features to display in SHAP plots
+    feature_selection_enabled : bool, default=False
+        Whether to enable feature selection
+    feature_selection_method : str, default='groups'
+        Method to use for feature selection ('groups', 'names', 'patterns', 'indices', 'custom', 'combine')
+    feature_selection_kwargs : dict, default={}
+        Keyword arguments for the feature selection method
     """
 
     model_type: str = 'lightgbm'
@@ -78,6 +84,10 @@ class TrainingConfig:
     shap_sample_size: int = 100
     shap_plot_type: str = "dot"
     shap_max_display: int = 20
+    # Feature selection configuration
+    feature_selection_enabled: bool = False
+    feature_selection_method: str = 'groups'
+    feature_selection_kwargs: dict = field(default_factory=dict)
 
     def __post_init__(self):
         """Validate configuration after initialization."""
@@ -115,6 +125,12 @@ class TrainingConfig:
         # Convert experiment_dir to Path object
         self.experiment_dir = Path(self.experiment_dir)
 
+        # Validate feature selection parameters
+        if self.feature_selection_enabled:
+            valid_methods = ['groups', 'names', 'patterns', 'indices', 'custom', 'combine']
+            if self.feature_selection_method not in valid_methods:
+                raise ValueError(f"feature_selection_method must be one of {valid_methods}")
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert configuration to dictionary."""
         config_dict = asdict(self)
@@ -122,7 +138,11 @@ class TrainingConfig:
         config_dict['experiment_dir'] = str(self.experiment_dir)
         # Handle AquacultureConfig serialization
         if self.feature_engineering_config:
-            config_dict['feature_engineering_config'] = asdict(self.feature_engineering_config)
+            feat_dict = asdict(self.feature_engineering_config)
+            # Convert tuples to lists for YAML compatibility
+            if isinstance(feat_dict.get('window_length_probs'), tuple):
+                feat_dict['window_length_probs'] = list(feat_dict['window_length_probs'])
+            config_dict['feature_engineering_config'] = feat_dict
         return config_dict
 
     def save(self, filepath: Union[str, Path]) -> None:
@@ -162,7 +182,11 @@ class TrainingConfig:
         # Handle nested AquacultureConfig
         if 'feature_engineering_config' in config_dict and config_dict['feature_engineering_config']:
             from aquaculture.config import AquacultureConfig
-            config_dict['feature_engineering_config'] = AquacultureConfig(**config_dict['feature_engineering_config'])
+            # Convert lists back to tuples for tuple fields
+            feat_dict = config_dict['feature_engineering_config']
+            if 'window_length_probs' in feat_dict and isinstance(feat_dict['window_length_probs'], list):
+                feat_dict['window_length_probs'] = tuple(feat_dict['window_length_probs'])
+            config_dict['feature_engineering_config'] = AquacultureConfig(**feat_dict)
 
         # Convert experiment_dir back to Path
         if 'experiment_dir' in config_dict:
