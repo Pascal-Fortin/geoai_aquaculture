@@ -10,6 +10,7 @@ This framework provides a complete machine learning pipeline for processing Sent
 - Feature engineering (optical indices, SAR features, cross-sensor features)
 - Temporal statistics
 - Metadata generation
+- Feature selection for model optimization and interpretability
 
 ## Documentation
 
@@ -30,6 +31,20 @@ This documentation is essential for understanding the sophisticated components o
 - **Comprehensive Evaluation**: Competition metric (0.6×F1 + 0.4×ROC-AUC) and standard metrics
 - **Model Interpretation**: SHAP values, feature importance, and visualization tools
 - **Production Ready**: Type hints, documentation, logging, and error handling
+
+### Feature Selection
+
+The aquaculture package includes flexible feature selection utilities that allow you to:
+
+- Select features by groups (temporal, metadata, optical, SAR, cross-sensor)
+- Select specific features by name
+- Select features using regex/wildcard patterns
+- Select features by index position
+- Use custom selection functions
+- Combine multiple selection criteria with include/exclude logic
+- Preserve the original feature engineering pipeline while selecting subsets for modeling
+
+These capabilities enable efficient model training, improved interpretability, and reduced overfitting by working with relevant feature subsets while maintaining access to the complete feature set for analysis.
 
 ## Project Structure
 

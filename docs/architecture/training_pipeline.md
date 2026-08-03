@@ -10,17 +10,18 @@
 7. [Validation Pipeline](#7-validation-pipeline)
 8. [Feature Engineering](#8-feature-engineering)
 9. [Feature Matrix](#9-feature-matrix)
-10. [Model Training](#10-model-training)
-11. [Hyperparameter Optimization](#11-hyperparameter-optimization)
-12. [Competition Metric](#12-competition-metric)
-13. [Final Model Training](#13-final-model-training)
-14. [Saved Artifacts](#14-saved-artifacts)
-15. [Inference Pipeline](#15-inference-pipeline)
-16. [Training vs Validation vs Test](#16-training-vs-validation-vs-test)
-17. [Reproducibility](#17-reproducibility)
-18. [Configuration](#18-configuration)
-19. [Performance Considerations](#19-performance-considerations)
-20. [Future Improvements](#20-future-improvements)
+10. [Feature Selection](#10-feature-selection)
+11. [Model Training](#11-model-training)
+12. [Hyperparameter Optimization](#12-hyperparameter-optimization)
+13. [Competition Metric](#13-competition-metric)
+14. [Final Model Training](#14-final-model-training)
+15. [Saved Artifacts](#15-saved-artifacts)
+16. [Inference Pipeline](#16-inference-pipeline)
+17. [Training vs Validation vs Test](#17-training-vs-validation-vs-test)
+18. [Reproducibility](#18-reproducibility)
+19. [Configuration](#19-configuration)
+20. [Performance Considerations](#20-performance-considerations)
+21. [Future Improvements](#21-future-improvements)
 
 ## 1. Project Overview
 
@@ -928,7 +929,74 @@ See the source code (`feature_engineering.py:_build_feature_names()`) for the ex
 
 **Note:** All steps are deterministic given the random seed; stochasticity enters only through window selection and monthly dropout when `training=True`.
 
-## 10. Model Training
+## 10. Feature Selection
+
+The aquaculture package includes flexible feature selection utilities that allow you to work with subsets of engineered features while preserving the full feature calculation capability for analysis. This enables efficient model training, improved interpretability, and reduced overfitting.
+
+### 10.1 FeatureSelector Class
+
+The `FeatureSelector` class works with any fitted feature engineer (like `AquacultureFeatureEngineer`) to select arbitrary subsets of features for modeling without modifying the original feature calculation code.
+
+#### Key Features:
+- Select features by groups (temporal, metadata, optical, SAR, cross-sensor)
+- Select specific features by name
+- Select features using regex/wildcard patterns
+- Select features by index position
+- Use custom selection functions
+- Combine multiple selection criteria with include/exclude logic
+- Preserve original feature engineering pipeline while selecting subsets for modeling
+
+#### Usage Examples:
+```python
+from aquaculture.feature_selection import FeatureSelector, select_temporal_features, select_metadata_features
+
+# Keep only temporal and metadata features
+selector = FeatureSelector(
+    base_engineer=fitted_fe,
+    selection_method='groups',
+    groups=['temporal', 'metadata']
+)
+X_selected = selector.transform(X_data)
+
+# Keep only features matching specific patterns (mean and std)
+selector = FeatureSelector(
+    base_engineer=fitted_fe,
+    selection_method='patterns',
+    patterns=['_mean$', '_std$']
+)
+
+# Complex selection: temporal + metadata + specific optical bands, excluding certain features
+selector = FeatureSelector(
+    base_engineer=fitted_fe,
+    selection_method='combine',
+    include={'method': 'groups', 'groups': ['temporal', 'metadata']},
+    exclude={'method': 'names', 'names': ['green_01', 'nir_01']}
+)
+
+# Convenience functions for common selections
+temporal_selector = select_temporal_features(fitted_fe)
+metadata_selector = select_metadata_features(fitted_fe)
+```
+
+### 10.2 Benefits of Feature Selection
+
+1. **Improved Model Performance**: Reduces overfitting by eliminating irrelevant or redundant features
+2. **Faster Training**: Fewer features means quicker model training and inference
+3. **Enhanced Interpretability**: Easier to understand model decisions with fewer features
+4. **Reduced Memory Usage**: Lower memory footprint during training and prediction
+5. **Feature Importance Analysis**: Enables targeted analysis of specific feature groups
+
+### 10.3 Integration with Training Pipeline
+
+The feature selection capabilities can be integrated into the training pipeline by:
+1. Using the full feature engineering pipeline to generate all possible features
+2. Applying a `FeatureSelector` to choose the desired subset for modeling
+3. Training models on the selected feature subset
+4. Maintaining access to the full feature set for analysis and debugging
+
+This approach preserves the benefit of the complete feature engineering process while allowing focused model development.
+
+## 11. Model Training
 
 ### Overview
 Model training in the aquaculture pipeline uses gradient boosting algorithms (LightGBM, CatBoost, or XGBoost) with class weighting to handle label imbalance. The training process is optimized for reproducibility and performance.
