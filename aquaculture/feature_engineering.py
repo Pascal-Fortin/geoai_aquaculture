@@ -310,16 +310,39 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
                         s2_mask[i, m, :] = False
                     # Else: keep S2 bands (mask remains True, which is the default)
         else:
-            # No masking simulation: use all months as observed
-            window_lengths = np.full(n_samples, 12, dtype=int)
-            start_months = np.zeros(n_samples, dtype=int)
-            end_months = np.full(n_samples, 11, dtype=int)
+            # No masking simulation: determine observation window from SAR data (cloud-independent)
             X_masked = X.copy()
-            # No masking simulation, but we should still reflect actual missing data in the mask
-            # S2 bands are indices 2-11
+            # S2 mask for optical data (reflects actual missing data)
             s2_mask = (X[:, :, 2:12] != -9999.0)  # True where data is NOT missing
-            # Note: We don't set values to -9999 since we're not simulating masking
-            # The actual -9999 values remain in X_masked and will be converted to NaN below
+
+            # Determine observation window based on SAR data availability (VH or VV)
+            # A month is observed if EITHER VH or VV band has valid data (not -9999.0)
+            sar_valid = (X[:, :, 0] != -9999.0) | (X[:, :, 1] != -9999.0)  # Shape: (n_samples, 12)
+
+            # Initialize arrays
+            window_lengths = np.zeros(n_samples, dtype=int)
+            start_months = np.zeros(n_samples, dtype=int)
+            end_months = np.zeros(n_samples, dtype=int)
+
+            # For each sample, find the observation window based on SAR data
+            for i in range(n_samples):
+                # Find indices of months where SAR data is available
+                sar_observed_months = np.where(sar_valid[i])[0]
+
+                if len(sar_observed_months) > 0:
+                    # We have at least one month with SAR data
+                    start_month = sar_observed_months[0]
+                    end_month = sar_observed_months[-1]
+                    window_length = end_month - start_month + 1
+
+                    start_months[i] = start_month
+                    end_months[i] = end_month
+                    window_lengths[i] = window_length
+                else:
+                    # No SAR data available at all - fallback to full window
+                    start_months[i] = 0
+                    end_months[i] = 11
+                    window_lengths[i] = 12
 
         # Convert masking sentinel values (-9999) to NaN for proper handling in downstream computations
         X_masked[X_masked == -9999.0] = np.nan

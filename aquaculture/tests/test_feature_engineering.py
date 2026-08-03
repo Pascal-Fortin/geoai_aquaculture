@@ -507,6 +507,74 @@ def test_cross_sensor_division_by_zero():
         assert np.all(mul_values == 0.0), f"Expected zero for multiplication features in month {month+1}, got {mul_values}"
 
 
+def test_observation_window_from_sar_data():
+    """Test that window length, start month, and end month are correctly derived from SAR data when simulate_mask=False."""
+    # Create test data with known SAR availability pattern
+    np.random.seed(42)
+    n_samples = 3
+    X = np.full((n_samples, 12, 12), -9999.0, dtype=np.float64)  # Start with all missing
+
+    # Band order: 0:VH,1:VV,2:blue,3:green,4:nir,5:nira,6:re1,7:re2,8:re3,9:red,10:swir1,11:swir2
+
+    # Sample 0: SAR available months 2-5 (Mar-Jun) -> window_length=4, start=2, end=5
+    X[0, 2:6, 0] = 0.5  # VH available Mar-Jun
+    X[0, 2:6, 1] = 0.6  # VV available Mar-Jun
+
+    # Sample 1: SAR available months 0-3 (Jan-Apr) -> window_length=4, start=0, end=3
+    X[1, 0:4, 0] = 0.5  # VH available Jan-Apr
+    X[1, 0:4, 1] = 0.6  # VV available Jan-Apr
+
+    # Sample 2: SAR available months 8-11 (Sep-Dec) -> window_length=4, start=8, end=11
+    X[2, 8:12, 0] = 0.5  # VH available Sep-Dec
+    X[2, 8:12, 1] = 0.6  # VV available Sep-Dec
+
+    # Add some dummy S2 data to avoid issues in other calculations (but we're testing SAR-based window)
+    X[:, :, 2:] = 0.1  # Set S2 bands to small non-zero values
+
+    # Create feature engineer with metadata enabled to check window values
+    fe = AquacultureFeatureEngineer(
+        simulate_mask=False,  # Important: use actual data, not simulation
+        random_state=42,
+        include_optical=False,  # Simplify test
+        include_sar=True,
+        include_cross_sensor_features=False,
+        include_temporal_statistics=False,
+        include_metadata=True  # Enable to get window_length, start_month, end_month features
+    )
+
+    fe.fit(X)
+    df = fe.transform(X, training=False)  # training=False to use actual SAR data
+
+    # Get feature names to locate metadata features
+    feature_names = list(fe.get_feature_names_out())
+
+    # Find indices of metadata features
+    try:
+        window_length_idx = feature_names.index("window_length")
+        start_month_idx = feature_names.index("start_month")
+        end_month_idx = feature_names.index("end_month")
+    except ValueError as e:
+        raise AssertionError(f"Could not find metadata features: {e}")
+
+    # Extract the metadata values for each sample
+    window_lengths = df.iloc[:, window_length_idx].values
+    start_months = df.iloc[:, start_month_idx].values
+    end_months = df.iloc[:, end_month_idx].values
+
+    # Expected values based on our test data construction
+    expected_window_lengths = np.array([4, 4, 4])
+    expected_start_months = np.array([2, 0, 8])
+    expected_end_months = np.array([5, 3, 11])
+
+    # Check that we got the expected values
+    np.testing.assert_array_equal(window_lengths, expected_window_lengths,
+                                  "Window lengths do not match expected values")
+    np.testing.assert_array_equal(start_months, expected_start_months,
+                                  "Start months do not match expected values")
+    np.testing.assert_array_equal(end_months, expected_end_months,
+                                  "End months do not match expected values")
+
+
 if __name__ == "__main__":
     print("Testing AquacultureFeatureEngineer...")
     test_basic_functionality()
