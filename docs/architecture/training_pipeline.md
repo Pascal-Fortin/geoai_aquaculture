@@ -861,19 +861,18 @@ If certain groups are disabled, the total is reduced accordingly.
 
 Features appear in the DataFrame in the following order:
 
-1. Monthly raw features (optical indices, optical bands, SAR, cross‑sensor) – sorted by base name then month
-2. Temporal statistics (same order as monthly, each with suffix `_mean`, `_std`, `_min`, `_max`, `_amp`, `_slope`)
-3. Metadata (window length, start month, end month, n_optical_obs, fraction_optical, then 12 monthly flags)
+1. Monthly raw features grouped by month (months 1-12), with features within each month ordered as: optical indices, optical bands, SAR features, cross-sensor features
+2. Temporal statistics (same order as monthly features, each with suffix `_mean`, `_std`, `_min`, `_max`, `_amplitude`, `_slope`)
+3. Metadata (window length, start month, end month, n_optical_obs, fraction_optical, then 12 monthly observation flags)
 
-Example snippet of column names (first 20):
+Example snippet of column names (first 23 features for January):
 
 ```
-['NDVI_01', 'NDVI_02', ..., 'NDVI_12',
- 'NDWI_01', ..., 'NDWI_12',
- 'MNDWI_01', ..., 'MNDWI_12',
- 'NDMI_01', ..., 'NDMI_12',
- 'NDRE2_01', ..., 'NDRE2_12',
- ...]
+['NDVI_01', 'NDWI_01', 'MNDWI_01', 'NDMI_01', 'NDRE2_01', 'NDRE3_01',
+ 'green_01', 'nir_01', 'nira_01', 'swir1_01', 'swir2_01',        # Optical indices and bands
+ 'VH_01', 'VV_01', 'VH_VV_ratio_01', 'VH_VV_diff_01',           # SAR features
+ 'VH_NDWI_ratio_01', 'VV_NDWI_ratio_01', 'VH_NDVI_ratio_01', 'VV_NDVI_ratio_01',
+ 'VH_NDWI_mul_01', 'VV_NDWI_mul_01', 'VH_NDVI_mul_01', 'VV_NDVI_mul_01']  # Cross-sensor features
 ```
 
 See the source code (`feature_engineering.py:_build_feature_names()`) for the exact ordering.

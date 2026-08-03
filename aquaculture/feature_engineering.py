@@ -201,23 +201,22 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
         """Build output feature names based on configuration."""
         feature_names = []
 
-        # Optical features (spectral indices + green, nir, nira, swir1, swir2)
-        # These are always included as base features when include_optical=True
-        if self.include_optical:
-            for month in range(1, 13):
+        # Monthly features grouped by month first, then feature type within each month
+        for month in range(1, 13):
+            # Optical features (spectral indices + green, nir, nira, swir1, swir2)
+            # These are always included as base features when include_optical=True
+            if self.include_optical:
                 for fname in self._optical_feature_names:
                     feature_names.append(f"{fname}_{month:02d}")
 
-        # SAR features (VH, VV, VH_VV_ratio, VH_VV_diff)
-        # These are always included as base features when include_sar=True
-        if self.include_sar:
-            for month in range(1, 13):
+            # SAR features (VH, VV, VH_VV_ratio, VH_VV_diff)
+            # These are always included as base features when include_sar=True
+            if self.include_sar:
                 for fname in self._sar_feature_names:
                     feature_names.append(f"{fname}_{month:02d}")
 
-        # Cross sensor features (only if both optical and SAR are included AND we want cross features)
-        if self.include_cross_sensor_features and self.include_optical and self.include_sar:
-            for month in range(1, 13):
+            # Cross sensor features (only if both optical and SAR are included AND we want cross features)
+            if self.include_cross_sensor_features and self.include_optical and self.include_sar:
                 for fname in self._cross_sensor_feature_names:
                     feature_names.append(f"{fname}_{month:02d}")
 
