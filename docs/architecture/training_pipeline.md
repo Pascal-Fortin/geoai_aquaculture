@@ -558,11 +558,11 @@ The feature engineering process creates six distinct feature groups:
 **Features**: VH, VV, VH_VV_ratio, VH_VV_diff  
 **Temporal resolution**: Monthly (12 months)  
 **Mathematical definitions**:
-- VH_VV_ratio = VH / VV (with division by zero protection → NaN)
+- VH_VV_ratio = sign(VH/VV) * log1p(|VH/VV|) (with division by zero protection → NaN)
 - VH_VV_diff = VH - VV
 
 **Motivation**: Captures radar backscatter characteristics sensitive to water surface roughness and vegetation structure  
-**Implementation**: `feature_engineering.py:transform()` lines 362-373
+**Implementation**: `feature_engineering.py:transform()` lines 386-403
 
 #### 8.2 Optical Indices
 **Features**: NDVI, NDWI, MNDWI, NDMI, NDRE2, NDRE3  
@@ -603,7 +603,7 @@ The feature engineering process creates six distinct feature groups:
 **Temporal resolution**: Monthly (12 months)
 
 **Mathematical definitions**:
-- Ratio: SAR_band / Optical_index
+- Ratio: sign(SAR_band / Optical_index) * log1p(|SAR_band / Optical_index|)
 - Multiplication: SAR_band × Optical_index
 
 **Motivation**: Captures relationships between radar structure and optical vegetation/water properties

@@ -391,9 +391,15 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
             with np.errstate(divide='ignore', invalid='ignore'):
                 vh_vv_ratio = np.true_divide(vh, vv)
                 vh_vv_ratio[vv == 0] = np.nan
+            # Apply signed log transformation to preserve sign information: sign(x) * log1p(|x|)
+            sign_vh_vv_ratio = np.sign(vh_vv_ratio)
+            abs_vh_vv_ratio = np.abs(vh_vv_ratio)
+            log_abs_vh_vv_ratio = np.log1p(abs_vh_vv_ratio)
+            signed_log_vh_vv_ratio = sign_vh_vv_ratio * log_abs_vh_vv_ratio
+            # Where input was NaN, output remains NaN (handled automatically by NaN propagation)
             vh_vv_diff = vh - vv
             # Stack to shape (n_samples, 12, 4)
-            sar_stack = np.stack([vh, vv, vh_vv_ratio, vh_vv_diff], axis=2)
+            sar_stack = np.stack([vh, vv, signed_log_vh_vv_ratio, vh_vv_diff], axis=2)
             feature_arrays.append(sar_stack)
 
         # Step 4: Compute cross sensor features (if both optical and SAR are included)
@@ -412,6 +418,27 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
             vv_ndwi_ratio[ndwi == 0] = np.nan
             vh_ndvi_ratio[ndvi == 0] = np.nan
             vv_ndvi_ratio[ndvi == 0] = np.nan
+            # Apply signed log transformation to preserve sign information: sign(x) * log1p(|x|)
+            # For VH_NDWI_ratio
+            sign_vh_ndwi_ratio = np.sign(vh_ndwi_ratio)
+            abs_vh_ndwi_ratio = np.abs(vh_ndwi_ratio)
+            log_abs_vh_ndwi_ratio = np.log1p(abs_vh_ndwi_ratio)
+            signed_log_vh_ndwi_ratio = sign_vh_ndwi_ratio * log_abs_vh_ndwi_ratio
+            # For VV_NDWI_ratio
+            sign_vv_ndwi_ratio = np.sign(vv_ndwi_ratio)
+            abs_vv_ndwi_ratio = np.abs(vv_ndwi_ratio)
+            log_abs_vv_ndwi_ratio = np.log1p(abs_vv_ndwi_ratio)
+            signed_log_vv_ndwi_ratio = sign_vv_ndwi_ratio * log_abs_vv_ndwi_ratio
+            # For VH_NDVI_ratio
+            sign_vh_ndvi_ratio = np.sign(vh_ndvi_ratio)
+            abs_vh_ndvi_ratio = np.abs(vh_ndvi_ratio)
+            log_abs_vh_ndvi_ratio = np.log1p(abs_vh_ndvi_ratio)
+            signed_log_vh_ndvi_ratio = sign_vh_ndvi_ratio * log_abs_vh_ndvi_ratio
+            # For VV_NDVI_ratio
+            sign_vv_ndvi_ratio = np.sign(vv_ndvi_ratio)
+            abs_vv_ndvi_ratio = np.abs(vv_ndvi_ratio)
+            log_abs_vv_ndvi_ratio = np.log1p(abs_vv_ndvi_ratio)
+            signed_log_vv_ndvi_ratio = sign_vv_ndvi_ratio * log_abs_vv_ndvi_ratio
             vh_ndwi_mul = vh * ndwi
             vv_ndwi_mul = vv * ndwi
             vh_ndvi_mul = vh * ndvi
@@ -419,10 +446,10 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
             # Stack to shape (n_samples, 12, 8)
             cross_stack = np.stack(
                 [
-                    vh_ndwi_ratio,
-                    vv_ndwi_ratio,
-                    vh_ndvi_ratio,
-                    vv_ndvi_ratio,
+                    signed_log_vh_ndwi_ratio,
+                    signed_log_vv_ndwi_ratio,
+                    signed_log_vh_ndvi_ratio,
+                    signed_log_vv_ndvi_ratio,
                     vh_ndwi_mul,
                     vv_ndwi_mul,
                     vh_ndvi_mul,
