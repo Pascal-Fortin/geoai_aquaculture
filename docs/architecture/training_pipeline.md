@@ -588,12 +588,31 @@ The feature engineering process creates six distinct feature groups:
 **Temporal resolution**: Monthly (12 months)
 
 **Note**: Excludes Blue, Red, RE1, RE2, RE3 as specified in requirements
+**Note**: Normalized versions (Green_z, NIR_z, NNIR_z, SWIR1_z, SWIR2_z) are also available when include_normalized_optical=True
 
 **Motivation**: Direct reflectance values for key spectral regions
 
 **Implementation**: `feature_engineering.py:transform()` lines 351-360
 
-#### 8.4 Cross-Sensor Features
+#### 8.4 Optical Bands (Normalized)
+**Features**: Green_z, NIR_z, NNIR_z, SWIR1_z, SWIR2_z
+
+**Temporal resolution**: Monthly (12 months)
+
+**Note**: Normalized versions of the optical bands (Green, NIR, NNIR, SWIR1, SWIR2) using z-score normalization within the observation window
+
+**Mathematical definition**: 
+- z = (x - μ) / σ
+- μ = mean of valid observations in temporal window
+- σ = standard deviation of valid observations in temporal window
+- If σ = 0 (all values identical), z = 0
+- If no valid observations, z = NaN
+
+**Motivation**: Normalization reduces the impact of absolute scale differences and highlights temporal patterns relative to each observation's own baseline. This can improve model performance by reducing dynamic range and emphasizing relative changes.
+
+**Implementation**: `feature_engineering.py:transform()` lines 362-380
+
+#### 8.5 Cross-Sensor Features
 **Features**: 
 - VH_NDWI_ratio, VV_NDWI_ratio
 - VH_NDVI_ratio, VV_NDVI_ratio  
@@ -613,7 +632,8 @@ The feature engineering process creates six distinct feature groups:
 #### 8.5 Temporal Statistics
 **Statistics**: mean, std, min, max, amplitude, slope
 
-**Applied to**: All base features (optical indices, optical bands, SAR, cross-sensor)
+**Applied to**: All base features (optical indices, optical bands, normalized optical bands, SAR, cross-sensor)
+**Note**: Temporal statistics for normalized optical bands are grouped in the 'temporal_z' feature group
 
 **Mathematical definitions**:
 - Mean: Σxᵢ/n (with NaN handling per feature type)
@@ -649,20 +669,23 @@ The feature engineering process creates six distinct feature groups:
 For a single sample with default configuration:
 ```
 Input:  (12 months × 12 bands) = 144 raw values
-Output: ~200+ engineered features
+Output: ~500+ engineered features
 
 Breakdown:
 - Optical indices: 6 indices × 12 months = 72 features
 - Optical bands: 5 bands × 12 months = 60 features  
+- Normalized optical bands: 5 bands × 12 months = 60 features
 - SAR features: 4 features × 12 months = 48 features
 - Cross-sensor: 8 features × 12 months = 96 features (if enabled)
-- Temporal stats: (6+5+4+8) features × 6 stats = 138 features (if enabled)
+- Temporal stats: (6+5+5+4+8) features × 6 stats = 168 features (if enabled)
+  - Regular features: (6+5+4+8) = 23 × 6 = 138
+  - Normalized optical bands: 5 × 6 = 30 (goes to temporal_z group)
 - Metadata: 5 + 12 = 17 features
-Total: 72+60+48+96+138+17 = 431 features (with temporal stats)
+Total: 72+60+60+48+96+168+17 = 521 features (with temporal stats)
 ```
 
 Without temporal statistics (disabled):
-Total: 72+60+48+96+17 = 293 features
+Total: 72+60+60+48+96+17 = 353 features
 
 ## 9. Feature Matrix
 

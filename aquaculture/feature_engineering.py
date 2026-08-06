@@ -72,6 +72,7 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
         include_cross_sensor_features: bool = True,
         include_temporal_statistics: bool = True,
         include_metadata: bool = True,
+        include_normalized_optical: bool = True,
     ):
         self.simulate_mask = simulate_mask
         self.random_state = random_state
@@ -83,6 +84,7 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
         self.include_cross_sensor_features = include_cross_sensor_features
         self.include_temporal_statistics = include_temporal_statistics
         self.include_metadata = include_metadata
+        self.include_normalized_optical = include_normalized_optical
 
         # Internal random generator
         self._rng: Optional[np.random.Generator] = None
@@ -92,7 +94,7 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
         self.feature_names_out_: Optional[List[str]] = None
 
         # We'll define the feature groups and their names here for consistency
-        # Note: The order must match the band order in the data (0:VH, 1:VV, 2:blue, 3:green, 4:nir, 5:nira, 6:re1, 7:re2, 8:re3, 9:red, 10:swir1, 11:swir2)
+        # Note: The order must match the band order in the data (0:VH, 1:VV, 2:blue, 3:green, 4:nir, 5:nira, 6:re1, 7:re1, 7:re2, 8:re3, 9:red, 10:swir1, 11:swir2)
         self._optical_feature_names = [
             "NDVI",
             "NDWI",
@@ -105,6 +107,14 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
             "nira",
             "swir1",
             "swir2",
+        ]
+
+        self._normalized_optical_feature_names = [
+            "green_z",
+            "nir_z",
+            "nira_z",
+            "swir1_z",
+            "swir2_z",
         ]
 
         self._sar_feature_names = [
@@ -209,6 +219,11 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
                 for fname in self._optical_feature_names:
                     feature_names.append(f"{fname}_{month:02d}")
 
+                # Normalized optical features (green_z, nir_z, etc.) if enabled
+                if self.include_normalized_optical:
+                    for fname in self._normalized_optical_feature_names:
+                        feature_names.append(f"{fname}_{month:02d}")
+
             # SAR features (VH, VV, VH_VV_ratio, VH_VV_diff)
             # These are always included as base features when include_sar=True
             if self.include_sar:
@@ -228,6 +243,9 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
             # Optical features
             if self.include_optical:
                 temp_feature_names.extend(self._optical_feature_names)
+            # Normalized optical features (if enabled)
+            if self.include_optical and self.include_normalized_optical:
+                temp_feature_names.extend(self._normalized_optical_feature_names)
             # SAR features
             if self.include_sar:
                 temp_feature_names.extend(self._sar_feature_names)
@@ -383,6 +401,42 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
             optical_bands = np.stack([g, nir, nnir, s1, s2], axis=2)  # (n_samples, 12, 5)
             feature_arrays.append(optical_bands)
 
+            # Compute z-score normalized optical bands if enabled
+            if self.include_normalized_optical:
+                # For each sample, compute z-scores within the observation window
+                # We need to identify valid observations (not NaN) for each sample and band
+                normalized_bands = []
+                band_arrays = [g, nir, nnir, s1, s2]
+
+                for band_array in band_arrays:
+                    # Initialize output array with NaN
+                    normalized_band = np.full_like(band_array, np.nan)
+
+                    # Process each sample
+                    for i in range(n_samples):
+                        # Find valid observations (not NaN) for this sample and band
+                        valid_mask = ~np.isnan(band_array[i, :])
+                        valid_values = band_array[i, :][valid_mask]
+
+                        if len(valid_values) > 0:
+                            # Compute mean and std only from valid observations
+                            band_mean = np.mean(valid_values)
+                            band_std = np.std(valid_values, ddof=1)  # Sample standard deviation
+
+                            # Avoid division by zero
+                            if band_std > 0:
+                                # Compute z-scores: (value - mean) / std
+                                normalized_band[i, :] = (band_array[i, :] - band_mean) / band_std
+                            else:
+                                # If std is 0, set all values to 0 (they're all the same)
+                                normalized_band[i, :] = 0.0
+
+                    normalized_bands.append(normalized_band)
+
+                # Stack normalized bands to shape (n_samples, 12, 5)
+                normalized_optical_bands = np.stack(normalized_bands, axis=2)
+                feature_arrays.append(normalized_optical_bands)
+
         # Step 3: Extract SAR features (VH, VV, ratio, difference) (if included)
         if self.include_sar:
             vh = X_masked[:, :, 0]  # shape (n_samples, 12)
@@ -473,7 +527,11 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
             if self.include_optical:
                 # Spectral indices (6): all True (ignore NaNs)
                 # Specific optical bands (green, nir, nira, swir1, swir2) (5): all True (ignore NaNs)
-                ignore_nans.extend([True] * 11)  # 6 + 5 = 11 optical features
+                # Normalized optical bands (green_z, nir_z, nira_z, swir1_z, swir2_z) (5): all True (ignore NaNs) if enabled
+                n_optical = 11  # 6 indices + 5 bands
+                if self.include_normalized_optical:
+                    n_optical += 5  # Add 5 normalized bands
+                ignore_nans.extend([True] * n_optical)
             # SAR features (if included)
             if self.include_sar:
                 # VH, VV, VH_VV_ratio, VH_VV_diff (4): all True (ignore NaNs like other features)
@@ -613,6 +671,7 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
             'optical': [],
             'cross': [],
             'temporal': [],
+            'temporal_z': [],
             'metadata': [],
             'other': []
         }
@@ -620,7 +679,8 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
         # Precompute sets for faster lookup
         sar_set = {"VH", "VV", "VH_VV_ratio", "VH_VV_diff"}
         optical_set = {"NDVI", "NDWI", "MNDWI", "NDMI", "NDRE2", "NDRE3",
-                      "green", "nir", "nira", "swir1", "swir2"}
+                      "green", "nir", "nira", "swir1", "swir2",
+                      "green_z", "nir_z", "nira_z", "swir1_z", "swir2_z"}
         cross_set = {"VH_NDWI_ratio", "VV_NDWI_ratio", "VH_NDVI_ratio", "VV_NDVI_ratio",
                     "VH_NDWI_mul", "VV_NDWI_mul", "VH_NDVI_mul", "VV_NDVI_mul"}
         stat_set = set(self._stat_names)
@@ -632,7 +692,12 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
                 groups['metadata'].append(i)
             # Temporal statistics: ends with _{stat}
             elif any(name.endswith(f"_{stat}") for stat in stat_set):
-                groups['temporal'].append(i)
+                # Check if this is a temporal stat of a normalized optical feature
+                prefix = name.rsplit('_', 1)[0]  # Remove the _{stat} suffix
+                if prefix in {"green_z", "nir_z", "nira_z", "swir1_z", "swir2_z"}:
+                    groups['temporal_z'].append(i)
+                else:
+                    groups['temporal'].append(i)
             # Monthly features: ends with _{MM} where MM is 01-12
             elif len(name) >= 5 and name[-3] == '_' and name[-2:].isdigit() and 1 <= int(name[-2:]) <= 12:
                 prefix = name[:-3]  # Remove the _{MM} suffix
