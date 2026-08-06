@@ -618,7 +618,7 @@ class Trainer:
         train_test_gap = train_score - test_score
         logger.info(f"Train-Test gap: {train_test_gap:.4f}")
         if train_test_gap > 0.1:  # Arbitrary threshold for significant overfitting
-            logger.warning(f"Large train-train gap ({train_test_gap:.4f}) suggests potential overfitting")
+            logger.warning(f"Large train-test gap ({train_test_gap:.4f}) suggests potential overfitting")
 
         # Log individual fold scores from the best trial if available
         fold_scores = []
