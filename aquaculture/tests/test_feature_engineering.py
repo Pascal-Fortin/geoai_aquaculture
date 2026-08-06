@@ -276,23 +276,24 @@ def test_feature_order_matches_transform():
     feature_names_simple = fe_simple.get_feature_names_out()
 
     # Check that we have the expected number of monthly features
-    # 11 optical + 4 SAR + 8 cross = 23 features per month
-    # 12 months * 23 features = 276 total features
-    expected_monthly_features = 12 * (11 + 5 + 4 + 8)  # original optical + normalized optical + SAR + cross
+    # 11 original optical + 5 normalized optical + 6 normalized indices + 4 SAR + 8 cross = 34 features per month
+    # 12 months * 34 features = 408 total features
+    expected_monthly_features = 12 * (11 + 5 + 6 + 4 + 8)  # original optical + normalized optical + normalized indices + SAR + cross
     assert len(feature_names_simple) == expected_monthly_features, f"Expected {expected_monthly_features} monthly features, got {len(feature_names_simple)}"
 
     # Check that the first features are January (01) optical features
     expected_first_features = [
             "NDVI_01", "NDWI_01", "MNDWI_01", "NDMI_01", "NDRE2_01", "NDRE3_01",
             "green_01", "nir_01", "nira_01", "swir1_01", "swir2_01",  # 11 original optical features
-            "green_z_01", "nir_z_01", "nira_z_01", "swir1_z_01", "swir2_z_01"  # 5 normalized optical features
+            "green_z_01", "nir_z_01", "nira_z_01", "swir1_z_01", "swir2_z_01",  # 5 normalized optical features
+            "NDVI_z_01", "NDWI_z_01", "MNDWI_z_01", "NDMI_z_01", "NDRE2_z_01", "NDRE3_z_01"  # 6 normalized indices
         ]
 
     for i, expected_feature in enumerate(expected_first_features):
         assert feature_names_simple[i] == expected_feature, f"At position {i}, expected '{expected_feature}', got '{feature_names_simple[i]}'"
 
     # Check that after optical features come SAR features for January
-    sar_start_idx = 16  # After 11 original + 5 normalized optical features
+    sar_start_idx = 22  # After 11 original + 5 normalized optical + 6 normalized indices features
     expected_sar_features = ["VH_01", "VV_01", "VH_VV_ratio_01", "VH_VV_diff_01"]
 
     for i, expected_feature in enumerate(expected_sar_features):
@@ -300,7 +301,7 @@ def test_feature_order_matches_transform():
         assert feature_names_simple[idx] == expected_feature, f"At position {idx}, expected '{expected_feature}', got '{feature_names_simple[idx]}'"
 
     # Check that after SAR features come cross features for January
-    cross_start_idx = sar_start_idx + 4  # After 11 original + 5 normalized + 4 SAR = 20
+    cross_start_idx = sar_start_idx + 4  # After 11 original + 5 normalized + 6 normalized indices + 4 SAR = 26
     expected_cross_features = [
         "VH_NDWI_ratio_01", "VV_NDWI_ratio_01", "VH_NDVI_ratio_01", "VV_NDVI_ratio_01",
         "VH_NDWI_mul_01", "VV_NDWI_mul_01", "VH_NDVI_mul_01", "VV_NDVI_mul_01"
@@ -311,8 +312,8 @@ def test_feature_order_matches_transform():
         assert feature_names_simple[idx] == expected_feature, f"At position {idx}, expected '{expected_feature}', got '{feature_names_simple[idx]}'"
 
     # Check that February features start after all January features
-    # January has 28 features (11+5+4+8), so February should start at index 28
-    feb_start_idx = 28
+    # January has 34 features (11+5+6+4+8), so February should start at index 34
+    feb_start_idx = 34
     expected_feb_first = "NDVI_02"
     assert feature_names_simple[feb_start_idx] == expected_feb_first, f"February should start at index {feb_start_idx} with '{expected_feb_first}', got '{feature_names_simple[feb_start_idx]}'"
 
@@ -345,15 +346,15 @@ def test_feature_order_with_temporal_stats():
     assert len(feature_names) == df.shape[1]
 
     # With temporal stats, we should have:
-    # Monthly features: 12 months * 28 features = 336
-    # Temporal stats: 28 features * 6 stats = 168
-    # Total: 336 + 168 = 504
-    # Explanation: For each of the 28 base feature types:
+    # Monthly features: 12 months * 34 features = 408
+    # Temporal stats: 34 features * 6 stats = 204
+    # Total: 408 + 204 = 612
+    # Explanation: For each of the 34 base feature types:
     #   - 12 monthly values (one per month)
     #   - 6 temporal statistics (computed over the 12 months)
     #   - Total per base feature: 12 + 6 = 18
-    #   - Total: 28 * 18 = 504
-    n_base_features_per_month = 11 + 5 + 4 + 8  # original optical + normalized optical + SAR + cross
+    #   - Total: 34 * 18 = 612
+    n_base_features_per_month = 11 + 5 + 6 + 4 + 8  # original optical + normalized optical + normalized indices + SAR + cross
     n_months = 12
     n_temporal_stats = 6
     expected_total = n_base_features_per_month * (n_months + n_temporal_stats)
@@ -457,13 +458,14 @@ def test_cross_sensor_division_by_zero():
     feature_names = fe.get_feature_names_out()
 
     # Based on our verification, the ordering is:
-    # Each month has 28 features: 11 original optical + 5 normalized optical + 4 SAR + 8 cross
-    # Within cross features (indices 20-27 per month):
-    #   Indices 20-23: ratio features (VH_NDWI_ratio, VV_NDWI_ratio, VH_NDVI_ratio, VV_NDVI_ratio)
-    #   Indices 24-27: multiplication features (VH_NDWI_mul, VV_NDWI_mul, VH_NDVI_mul, VV_NDVI_mul)
-    n_features_per_month = 28
+    # Each month has 34 features: 11 original optical + 5 normalized optical + 6 normalized indices + 4 SAR + 8 cross
+    # Within cross features (indices 26-33 per month):
+    #   Indices 26-29: ratio features (VH_NDWI_ratio, VV_NDWI_ratio, VH_NDVI_ratio, VV_NDVI_ratio)
+    #   Indices 30-33: multiplication features (VH_NDWI_mul, VV_NDWI_mul, VH_NDVI_mul, VV_NDVI_mul)
+    n_features_per_month = 34
     n_optical = 11  # original optical features
     n_normalized_optical = 5  # normalized optical features
+    n_normalized_indices = 6  # normalized indices
     n_sar = 4
     n_cross = 8
     n_cross_ratio = 4  # first 4 of cross features are ratios
@@ -472,7 +474,7 @@ def test_cross_sensor_division_by_zero():
     # For each month, check that the four ratio features are NaN where denominator is zero
     for month in range(n_months):
         base_idx = month * n_features_per_month  # start of this month's features
-        ratio_start = base_idx + n_optical + n_normalized_optical + n_sar  # index of first ratio feature
+        ratio_start = base_idx + n_optical + n_normalized_optical + n_normalized_indices + n_sar  # index of first ratio feature
         # Expected ratio names for this month
         month_str = f"{month+1:02d}"
         expected_ratio_names = [
@@ -494,7 +496,7 @@ def test_cross_sensor_division_by_zero():
     # Additionally, verify that multiplication features (last four of cross) are zero (since VH*0 etc)
     for month in range(n_months):
         base_idx = month * n_features_per_month
-        mul_start = base_idx + n_optical + n_normalized_optical + n_sar + n_cross_ratio  # index of first multiplication feature
+        mul_start = base_idx + n_optical + n_normalized_optical + n_normalized_indices + n_sar + n_cross_ratio  # index of first multiplication feature
         expected_mul_names = [
             f"VH_NDWI_mul_{month+1:02d}",
             f"VV_NDWI_mul_{month+1:02d}",
@@ -644,6 +646,101 @@ def test_fraction_optical_calculation():
                                err_msg="fraction_optical values do not match expected")
 
 
+def test_normalized_indices():
+    """Test that normalized indices are correctly computed and included in output."""
+    # Create sample data: 3 samples, 12 months, 12 bands
+    np.random.seed(42)
+    X = np.random.rand(3, 12, 12).astype(np.float64)
+
+    # Introduce some missing values (-9999) to simulate real data
+    X[0, 0, 2] = -9999.0  # Missing blue band in first sample, first month
+    X[1, 5, 5] = -9999.0  # Missing RE1 in second sample, sixth month
+
+    # Create feature engineer with normalized indices enabled
+    fe = AquacultureFeatureEngineer(
+        simulate_mask=False,  # No masking for deterministic test
+        random_state=42,
+        include_optical=True,
+        include_sar=False,  # Disable SAR to simplify
+        include_temporal_statistics=True,
+        include_cross_sensor_features=False,
+        include_metadata=False,
+        include_normalized_optical=True
+    )
+
+    fe.fit(X)
+    df = fe.transform(X, training=False)
+    feature_names = list(fe.get_feature_names_out())
+
+    # Check that normalized indices are present in feature names
+    expected_normalized_indices = [
+        "NDVI_z", "NDWI_z", "MNDWI_z", "NDMI_z", "NDRE2_z", "NDRE3_z"
+    ]
+
+    # Check base normalized indices (monthly features only, ending with _MM)
+    for idx in expected_normalized_indices:
+        # Should find features like "NDVI_z_01", "NDVI_z_02", etc. (only monthly, not temporal stats)
+        matching_features = [f for f in feature_names if f.startswith(idx + "_") and len(f) == len(idx) + 3 and f[-3] == '_' and f[-2:].isdigit() and 1 <= int(f[-2:]) <= 12]
+        assert len(matching_features) == 12, f"Expected 12 monthly features for {idx}, got {len(matching_features)}"
+
+    # Check that temporal statistics for normalized indices are present
+    # They should appear in the temporal_z group
+    groups = fe.feature_groups()
+    temporal_z_features = groups['temporal_z']
+
+    # Should have 6 indices * 6 statistics = 36 temporal_z features from normalized indices
+    expected_temporal_z_from_indices = 6 * 6  # 6 indices, 6 stats each
+    # Note: temporal_z also includes normalized optical bands (5 * 6 = 30)
+    expected_total_temporal_z = expected_temporal_z_from_indices + (5 * 6)  # normalized indices + normalized optical bands
+    assert len(temporal_z_features) == expected_total_temporal_z, \
+        f"Expected {expected_total_temporal_z} temporal_z features ({expected_temporal_z_from_indices} from normalized indices + 30 from normalized optical bands), got {len(temporal_z_features)}"
+
+    # Check that specific normalized index temporal stats exist
+    expected_temporal_stats = ['_mean', '_std', '_min', '_max', '_amplitude', '_slope']
+    for idx in ["NDVI_z", "NDWI_z", "MNDWI_z", "NDMI_z", "NDRE2_z", "NDRE3_z"]:
+        for stat in expected_temporal_stats:
+            feature_name = idx + stat
+            assert feature_name in feature_names, f"Expected feature {feature_name} not found"
+
+    print("Normalized indices test passed!")
+
+
+def test_normalized_indices_disabled():
+    """Test that when include_normalized_optical=False, normalized indices are not included."""
+    # Create sample data
+    np.random.seed(42)
+    X = np.random.rand(2, 12, 12).astype(np.float64)
+
+    # Create feature engineer with normalized indices disabled
+    fe = AquacultureFeatureEngineer(
+        simulate_mask=False,
+        random_state=42,
+        include_optical=True,
+        include_sar=False,
+        include_temporal_statistics=True,
+        include_cross_sensor_features=False,
+        include_metadata=False,
+        include_normalized_optical=False  # Explicitly disabled
+    )
+
+    fe.fit(X)
+    df = fe.transform(X, training=False)
+    feature_names = list(fe.get_feature_names_out())
+
+    # Check that normalized indices are NOT present in feature names
+    normalized_indices = [
+        "NDVI_z", "NDWI_z", "MNDWI_z", "NDMI_z", "NDRE2_z", "NDRE3_z",
+        "green_z", "nir_z", "nira_z", "swir1_z", "swir2_z"
+    ]
+
+    for idx in normalized_indices:
+        # Should NOT find any features starting with these prefixes
+        matching_features = [f for f in feature_names if f.startswith(idx + "_")]
+        assert len(matching_features) == 0, f"Found unexpected features for {idx}: {matching_features}"
+
+    print("Normalized indices disabled test passed!")
+
+
 if __name__ == "__main__":
     print("Testing AquacultureFeatureEngineer...")
     test_basic_functionality()
@@ -656,4 +753,6 @@ if __name__ == "__main__":
     test_cross_sensor_division_by_zero()
     test_observation_window_from_sar_data()
     test_fraction_optical_calculation()
+    test_normalized_indices()
+    test_normalized_indices_disabled()
     print("All tests passed!")

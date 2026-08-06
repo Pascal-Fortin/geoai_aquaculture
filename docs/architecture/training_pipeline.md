@@ -599,7 +599,7 @@ The feature engineering process creates six distinct feature groups:
 
 **Temporal resolution**: Monthly (12 months)
 
-**Note**: Normalized versions of the optical bands (Green, NIR, NNIR, SWIR1, SWIR2) using z-score normalization within the observation window
+**Note**: Normalized versions of the optical bands (Green, NIR, NNIR, SWIR1, SWIR2) and spectral indices (NDVI, NDWI, MNDWI, NDMI, NDRE2, NDRE3) using z-score normalization within the observation window
 
 **Mathematical definition**: 
 - z = (x - μ) / σ
@@ -610,7 +610,7 @@ The feature engineering process creates six distinct feature groups:
 
 **Motivation**: Normalization reduces the impact of absolute scale differences and highlights temporal patterns relative to each observation's own baseline. This can improve model performance by reducing dynamic range and emphasizing relative changes.
 
-**Implementation**: `feature_engineering.py:transform()` lines 362-380
+**Implementation**: `feature_engineering.py:transform()` lines 362-390
 
 #### 8.5 Cross-Sensor Features
 **Features**: 
@@ -632,8 +632,8 @@ The feature engineering process creates six distinct feature groups:
 #### 8.5 Temporal Statistics
 **Statistics**: mean, std, min, max, amplitude, slope
 
-**Applied to**: All base features (optical indices, optical bands, normalized optical bands, SAR, cross-sensor)
-**Note**: Temporal statistics for normalized optical bands are grouped in the 'temporal_z' feature group
+**Applied to**: All base features (optical indices, optical bands, normalized optical bands, normalized indices, SAR, cross-sensor)
+**Note**: Temporal statistics for normalized optical bands and normalized indices are grouped in the 'temporal_z' feature group
 
 **Mathematical definitions**:
 - Mean: Σxᵢ/n (with NaN handling per feature type)
@@ -675,17 +675,19 @@ Breakdown:
 - Optical indices: 6 indices × 12 months = 72 features
 - Optical bands: 5 bands × 12 months = 60 features  
 - Normalized optical bands: 5 bands × 12 months = 60 features
+- Normalized indices: 6 indices × 12 months = 72 features
 - SAR features: 4 features × 12 months = 48 features
 - Cross-sensor: 8 features × 12 months = 96 features (if enabled)
-- Temporal stats: (6+5+5+4+8) features × 6 stats = 168 features (if enabled)
+- Temporal stats: (6+5+5+4+8+6) features × 6 stats = 216 features (if enabled)
   - Regular features: (6+5+4+8) = 23 × 6 = 138
   - Normalized optical bands: 5 × 6 = 30 (goes to temporal_z group)
+  - Normalized indices: 6 × 6 = 36 (goes to temporal_z group)
 - Metadata: 5 + 12 = 17 features
-Total: 72+60+60+48+96+168+17 = 521 features (with temporal stats)
+Total: 72+60+60+72+48+96+216+17 = 641 features (with temporal stats)
 ```
 
 Without temporal statistics (disabled):
-Total: 72+60+60+48+96+17 = 353 features
+Total: 72+60+60+72+48+96+17 = 425 features
 
 ## 9. Feature Matrix
 

@@ -38,6 +38,8 @@ class AquacultureConfig:
         Whether to include cross sensor features (ratios and products of SAR and optical indices).
     include_metadata : bool, default=True
         Whether to include metadata features (window length, start month, etc.).
+    include_normalized_optical : bool, default=True
+        Whether to include normalized optical features (z-score normalization of optical bands and spectral indices within the observation window).
     """
 
     simulate_mask: bool = True
@@ -50,6 +52,7 @@ class AquacultureConfig:
     include_temporal_statistics: bool = True
     include_cross_sensor_features: bool = True
     include_metadata: bool = True
+    include_normalized_optical: bool = True
 
     def __post_init__(self):
         """Validate parameters after initialization."""
