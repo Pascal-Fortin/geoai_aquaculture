@@ -114,11 +114,15 @@ class FeatureSelector:
                 try:
                     # Try as regex first
                     regex = re.compile(pattern, flags)
-                    matches = [i for i, name in enumerate(all_names) if regex.search(name)]
                 except re.error:
-                    # Fall back to wildcard matching
-                    matches = [i for i, name in enumerate(all_names)
-                             if self._wildcard_match(name, pattern)]
+                    # Fall back to wildcard matching: convert to regex
+                    # Escape regex special chars except * and ?
+                    escaped_pattern = re.escape(pattern)
+                    # Convert wildcards to regex: * -> .*, ? -> .
+                    escaped_pattern = escaped_pattern.replace(r'\*', '.*').replace(r'\?', '.')
+                    regex = re.compile(escaped_pattern)
+
+                matches = [i for i, name in enumerate(all_names) if regex.search(name)]
                 selected_indices.extend(matches)
             self._selected_indices = np.sort(selected_indices)
 
@@ -176,8 +180,10 @@ class FeatureSelector:
         """Simple wildcard matching (* matches any sequence, ? matches any single character)"""
         # Escape regex special chars except * and ?
         pattern = re.escape(pattern)
+        # Convert wildcards to regex: * -> .*, ? -> .
         pattern = pattern.replace(r'\*', '.*').replace(r'\?', '.')
-        return bool(re.match(pattern, text))
+        # Use fullmatch to match the entire string (required for wildcard semantics)
+        return bool(re.fullmatch(pattern, text))
 
     def fit(self, X, y=None):
         """Selector doesn't need fitting - just pass through"""

@@ -7,6 +7,7 @@ import os
 import numpy as np
 import pandas as pd
 import pytest
+import re
 
 # Add the project root to the Python path so we can import aquaculture modules
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -327,6 +328,52 @@ class TestFeatureSelector:
             for idx in selected_indices:
                 assert idx in temporal_indices
 
+    def test_combine_method_include_exclude_patterns(self):
+        """Test combine method with include/exclude using patterns"""
+        # Include all features, then exclude optical band prefixes
+        selector = FeatureSelector(
+            self.fe,
+            selection_method='combine',
+            include={'method': 'patterns', 'patterns': ['.*']},  # Include all
+            exclude={'method': 'patterns', 'patterns': [
+                'green_.*',   # Features starting with green_
+                'nir_.*',     # Features starting with nir_
+                'nira_.*',    # Features starting with nira_
+                'swir1_.*',   # Features starting with swir1_
+                'swir2_.*'    # Features starting with swir2_
+            ]}
+        )
+
+        # Should have selected some features
+        assert selector.n_features_selected > 0
+        assert selector.n_features_selected < len(self.fe.get_feature_names_out())
+
+        # Get selected feature names
+        selected_names = set(selector.get_feature_names_out())
+        all_names = set(self.fe.get_feature_names_out())
+
+        # Excluded prefixes should not be in selection
+        excluded_prefixes = ['green_', 'nir_', 'nira_', 'swir1_', 'swir2_']
+        for prefix in excluded_prefixes:
+            # Check that no selected name starts with this prefix
+            for name in selected_names:
+                assert not name.startswith(prefix), f"Feature {name} should be excluded (starts with {prefix})"
+
+        # All excluded features should not be in selection
+        excluded_features = set()
+        for name in all_names:
+            for prefix in excluded_prefixes:
+                if name.startswith(prefix):
+                    excluded_features.add(name)
+                    break
+
+        # Selected and excluded sets should be disjoint
+        assert len(selected_names.intersection(excluded_features)) == 0
+
+        # Selected + excluded should be less than or equal to all features
+        # (there may be features that are neither selected nor excluded)
+        assert len(selected_names.union(excluded_features)) <= len(all_names)
+
     def test_custom_selection_function(self):
         """Test custom selection function"""
         # Select features with 'mean' in the name
@@ -416,6 +463,121 @@ class TestFeatureSelector:
         # Should have correct number of rows
         assert result1.shape[0] == X1.shape[0]
         assert result2.shape[0] == X2.shape[0]
+
+    def test_wildcard_match_method(self):
+        """Test the _wildcard_match helper method directly"""
+        # Create a FeatureSelector to access _wildcard_match (method doesn't matter for accessing helper)
+        selector = FeatureSelector(
+            self.fe,
+            selection_method='groups',
+            groups=['temporal']
+        )
+
+        # Test cases: (pattern, text, expected_result, description)
+        test_cases = [
+            # (*_01 patterns)
+            ('*_01', 'green_01', True, "*_01 should match green_01"),
+            ('*_01', 'green_02', False, "*_01 should not match green_02"),
+            ('*_01', 'abc_01', True, "*_01 should match abc_01"),
+            ('*_01', '01', False, "*_01 should not match 01 (need something before _)"),
+            # (green_* patterns)
+            ('green_*', 'green_01', True, "green_* should match green_01"),
+            ('green_*', 'green_abc', True, "green_* should match green_abc"),
+            ('green_*', 'green_', True, "green_* should match green_ (zero characters after)"),
+            ('green_*', 'agr_01', False, "green_* should not match agr_01"),
+            # (? patterns - single character)
+            ('a?c', 'abc', True, "a?c should match abc"),
+            ('a?c', 'ac', False, "a?c should not match ac (too short)"),
+            ('a?c', 'abbc', False, "a?c should not match abbc (too long)"),
+            ('a?c', 'axc', True, "a?c should match axc"),
+            # Mixed patterns
+            ('*_mean*', 'green_mean_01', True, "*_mean* should match green_mean_01"),
+            ('*_mean*', 'green_01', False, "*_mean* should not match green_01"),
+            # Edge cases
+            ('*', 'anything', True, "* should match anything"),
+            ('*', '', True, "* should match empty string"),
+            ('?', 'a', True, "? should match single character"),
+            ('?', 'ab', False, "? should not match two characters"),
+            ('?', '', False, "? should not match empty string"),
+        ]
+
+        all_passed = True
+        for pattern, text, expected, description in test_cases:
+            try:
+                result = selector._wildcard_match(text, pattern)
+                if result == expected:
+                    pass  # Test passed
+                else:
+                    print(f"FAIL: {description}")
+                    print(f"      Pattern: '{pattern}', Text: '{text}', Expected: {expected}, Got: {result}")
+                    all_passed = False
+            except Exception as e:
+                print(f"ERROR: {description}")
+                print(f"      Pattern: '{pattern}', Text: '{text}', Error: {e}")
+                all_passed = False
+
+        # Assert all tests passed
+        assert all_passed, "One or more _wildcard_match tests failed"
+
+    def test_patterns_method_with_wildcard_patterns(self):
+        """Test the patterns method with wildcard patterns that trigger fallback path"""
+        # Test pattern '*_01' (should match features ending with _01)
+        selector = FeatureSelector(
+            self.fe,
+            selection_method='patterns',
+            patterns=['*_01']  # Wildcard pattern: any sequence followed by _01
+        )
+
+        # Should have selected some features
+        assert selector.n_features_selected > 0
+        selected_names = set(selector.get_feature_names_out())
+
+        # All selected names should end with '_01'
+        for name in selected_names:
+            assert name.endswith('_01'), f"Feature {name} should end with '_01'"
+
+        # Verify we actually got the expected matches by checking against manual regex
+        import re
+        # Manual wildcard conversion: *_01 -> .*_01
+        manual_pattern = '.*_01'
+        manual_regex = re.compile(manual_pattern)
+        expected_matches = {name for name in self.fe.get_feature_names_out() if manual_regex.search(name)}
+
+        assert selected_names == expected_matches, f"Selected names {selected_names} should equal expected matches {expected_matches}"
+
+    def test_patterns_method_with_mixed_patterns(self):
+        """Test the patterns method with both regex and wildcard patterns"""
+        # Mix of regex pattern (ending with _mean) and wildcard pattern (starting with green_)
+        selector = FeatureSelector(
+            self.fe,
+            selection_method='patterns',
+            patterns=[
+                '_mean$',   # Regex: features ending with _mean
+                'green_*'   # Wildcard: features starting with green_
+            ]
+        )
+
+        # Should have selected some features
+        assert selector.n_features_selected > 0
+        selected_names = set(selector.get_feature_names_out())
+
+        # All selected names should either end with _mean OR start with green_
+        for name in selected_names:
+            assert name.endswith('_mean') or name.startswith('green_'), \
+                f"Feature {name} should either end with '_mean' or start with 'green_'"
+
+        # Verify we got the expected matches
+        import re
+        mean_regex = re.compile('_mean$')
+        green_pattern = 'green_.*'  # wildcard conversion
+        green_regex = re.compile(green_pattern)
+
+        expected_names = set()
+        for name in self.fe.get_feature_names_out():
+            if mean_regex.search(name) or green_regex.search(name):
+                expected_names.add(name)
+
+        assert selected_names == expected_names, f"Selected names {selected_names} should equal expected matches {expected_names}"
 
 
 if __name__ == "__main__":
