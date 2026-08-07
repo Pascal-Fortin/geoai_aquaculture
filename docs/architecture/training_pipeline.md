@@ -678,12 +678,12 @@ Breakdown:
 - Normalized indices: 6 indices × 12 months = 72 features
 - SAR features: 4 features × 12 months = 48 features
 - Cross-sensor: 8 features × 12 months = 96 features (if enabled)
-- Temporal stats: (6+5+5+4+8+6) features × 6 stats = 216 features (if enabled)
+- Temporal stats: (6+5+5+4+8+6) features × 6 stats = 204 features (if enabled)
   - Regular features: (6+5+4+8) = 23 × 6 = 138
   - Normalized optical bands: 5 × 6 = 30 (goes to temporal_z group)
   - Normalized indices: 6 × 6 = 36 (goes to temporal_z group)
 - Metadata: 5 + 12 = 17 features
-Total: 72+60+60+72+48+96+216+17 = 641 features (with temporal stats)
+Total: 72+60+60+72+48+96+204+17 = 629 features (with temporal stats)
 ```
 
 Without temporal statistics (disabled):
