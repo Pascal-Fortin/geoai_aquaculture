@@ -322,6 +322,8 @@ class Trainer:
                 include_cross_sensor_features=self.config.feature_engineering_config.include_cross_sensor_features,
                 include_temporal_statistics=self.config.feature_engineering_config.include_temporal_statistics,
                 include_metadata=self.config.feature_engineering_config.include_metadata,
+                include_normalized_optical=self.config.feature_engineering_config.include_normalized_optical,
+                include_directional_vote=self.config.feature_engineering_config.include_directional_vote,
             )
 
             # Process the data through the temporary feature engineer
@@ -390,6 +392,8 @@ class Trainer:
                 include_cross_sensor_features=self.config.feature_engineering_config.include_cross_sensor_features,
                 include_temporal_statistics=self.config.feature_engineering_config.include_temporal_statistics,
                 include_metadata=self.config.feature_engineering_config.include_metadata,
+                include_normalized_optical=self.config.feature_engineering_config.include_normalized_optical,
+                include_directional_vote=self.config.feature_engineering_config.include_directional_vote,
             )
 
             # Process the data through the temporary feature engineer
@@ -480,6 +484,8 @@ class Trainer:
             include_cross_sensor_features=self.config.feature_engineering_config.include_cross_sensor_features,
             include_temporal_statistics=self.config.feature_engineering_config.include_temporal_statistics,
             include_metadata=self.config.feature_engineering_config.include_metadata,
+            include_normalized_optical=self.config.feature_engineering_config.include_normalized_optical,
+            include_directional_vote=self.config.feature_engineering_config.include_directional_vote,
         )
         # Prepare training data for feature engineering (handle 2D to 3D conversion if needed)
         X_train_val_processed = X_train_val_raw.copy()

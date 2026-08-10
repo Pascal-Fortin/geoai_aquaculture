@@ -198,7 +198,9 @@ def create_objective_function(X_train: np.ndarray, y_train: np.ndarray,
                     include_sar=fec.include_sar,
                     include_cross_sensor_features=fec.include_cross_sensor_features,
                     include_temporal_statistics=fec.include_temporal_statistics,
-                    include_metadata=fec.include_metadata
+                    include_metadata=fec.include_metadata,
+                    include_normalized_optical=fec.include_normalized_optical,
+                    include_directional_vote=fec.include_directional_vote
                 )
 
                 # Process training data (3D raw -> 2D features)
