@@ -73,6 +73,7 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
         include_temporal_statistics: bool = True,
         include_metadata: bool = True,
         include_normalized_optical: bool = True,
+        include_directional_vote: bool = True,
     ):
         self.simulate_mask = simulate_mask
         self.random_state = random_state
@@ -85,6 +86,13 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
         self.include_temporal_statistics = include_temporal_statistics
         self.include_metadata = include_metadata
         self.include_normalized_optical = include_normalized_optical
+        self.include_directional_vote = include_directional_vote
+
+        # Directional vote feature names
+        self._directional_vote_feature_names = ["directional_vote"]
+
+        # Placeholder for directional vote statistics (to be computed during transform)
+        self._directional_vote_stats = None
 
         # Internal random generator
         self._rng: Optional[np.random.Generator] = None
@@ -268,6 +276,18 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
         if self.include_metadata:
             feature_names.extend(self._metadata_names)
 
+        # Directional vote features (computed from optical indices)
+        if self.include_directional_vote:
+            # These are computed statistics, not monthly features
+            feature_names.extend([
+                "directional_vote_fraction_positive",
+                "directional_vote_fraction_ge_2",
+                "directional_vote_fraction_eq_4",
+                "directional_vote_mean",
+                "directional_vote_min",
+                "directional_vote_max",
+            ])
+
         self.feature_names_out_ = feature_names
 
     def transform(self, X: np.ndarray, training: bool = True) -> pd.DataFrame:
@@ -401,6 +421,52 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
                 [ndvi, ndwi, mndwi, ndmi, ndre2, ndre3], axis=2
             )
             feature_arrays.append(indices_stack)
+
+            # Calculate directional vote features if enabled
+            if self.include_directional_vote:
+                # V(i) = sign(MNDWI(i)) + sign(NDWI(i)) - sign(NDRE2(i)) - sign(NDVI(i))
+                # Use the individual index arrays we already computed
+                directional_vote = np.sign(mndwi) + np.sign(ndwi) - np.sign(ndre2) - np.sign(ndvi)
+                # shape: (n_samples, 12)
+
+                # Create a mask for valid (non-NaN) directional vote values
+                valid_mask = ~np.isnan(directional_vote)
+
+                # Compute the 6 requested statistics, ignoring NaN values
+                # For fractions: count of valid months meeting condition / count of valid months
+                valid_count = np.sum(valid_mask, axis=1)
+                # Avoid division by zero
+                valid_count_safe = np.where(valid_count == 0, 1, valid_count)
+
+                fraction_positive = np.sum((directional_vote > 0) & valid_mask, axis=1) / valid_count_safe
+                fraction_ge_2 = np.sum((directional_vote >= 2) & valid_mask, axis=1) / valid_count_safe
+                fraction_eq_4 = np.sum((directional_vote == 4) & valid_mask, axis=1) / valid_count_safe
+
+                # For mean, min, max: use only valid values
+                # Create a copy where invalid values are replaced with appropriate values for min/max calculation
+                # For mean: replace NaN with 0 but only sum valid values (we already have the count)
+                directional_vote_for_mean = np.where(valid_mask, directional_vote, 0)
+                mean_vote = np.sum(directional_vote_for_mean, axis=1) / valid_count_safe
+
+                # For min and max: replace invalid values with large/small numbers so they don't affect results
+                # When all values are invalid for a sample, we'll get the default values but that's okay since valid_count will be 0
+                directional_vote_for_min = np.where(valid_mask, directional_vote, np.inf)
+                directional_vote_for_max = np.where(valid_mask, directional_vote, -np.inf)
+                min_vote = np.min(directional_vote_for_min, axis=1)
+                max_vote = np.max(directional_vote_for_max, axis=1)
+                # If all values were invalid, set to NaN
+                min_vote = np.where(valid_count == 0, np.nan, min_vote)
+                max_vote = np.where(valid_count == 0, np.nan, max_vote)
+
+                # Store for later addition to feature arrays
+                self._directional_vote_stats = np.column_stack([
+                    fraction_positive,
+                    fraction_ge_2,
+                    fraction_eq_4,
+                    mean_vote,
+                    min_vote,
+                    max_vote,
+                ])  # shape: (n_samples, 6)
 
             # Extract specific optical bands (green, nir, nira, swir1, swir2)
             # Note: We skip blue, red, re1, re2, re3 as requested
@@ -639,6 +705,10 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
             )
             feature_arrays.append(meta_features)
 
+        # Add directional vote features if computed
+        if self.include_directional_vote and self._directional_vote_stats is not None:
+            feature_arrays.append(self._directional_vote_stats)
+
         # Now combine all feature arrays horizontally
         if feature_arrays:
             X_combined = np.concatenate(feature_arrays, axis=1)
@@ -704,7 +774,7 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
         Returns
         -------
         groups : dict
-            Dictionary with keys 'sar', 'optical', 'cross', 'temporal', 'metadata', 'other'
+            Dictionary with keys 'sar', 'optical', 'cross', 'temporal', 'temporal_z', 'metadata', 'directional_vote', 'other'
             mapping to lists of column indices in the transformed data.
         """
         if self.feature_names_out_ is None:
@@ -718,6 +788,7 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
             'temporal': [],
             'temporal_z': [],
             'metadata': [],
+            'directional_vote': [],
             'other': []
         }
 
@@ -731,11 +802,22 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
                     "VH_NDWI_mul", "VV_NDWI_mul", "VH_NDVI_mul", "VV_NDVI_mul"}
         stat_set = set(self._stat_names)
         metadata_set = set(self._metadata_names)
+        directional_vote_set = {
+            "directional_vote_fraction_positive",
+            "directional_vote_fraction_ge_2",
+            "directional_vote_fraction_eq_4",
+            "directional_vote_mean",
+            "directional_vote_min",
+            "directional_vote_max",
+        }
 
         for i, name in enumerate(feature_names):
             # Metadata features (exact match)
             if name in metadata_set:
                 groups['metadata'].append(i)
+            # Directional vote features
+            elif name in directional_vote_set:
+                groups['directional_vote'].append(i)
             # Temporal statistics: ends with _{stat}
             elif any(name.endswith(f"_{stat}") for stat in stat_set):
                 # Check if this is a temporal stat of a normalized optical feature

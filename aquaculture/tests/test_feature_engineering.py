@@ -260,7 +260,7 @@ def test_feature_order_matches_transform():
         assert feature_names[i] == df.columns[i], f"Feature name at index {i} doesn't match: '{feature_names[i]}' vs '{df.columns[i]}'"
 
     # Additional verification: Check the order of a few specific features
-    # Without temporal stats and metadata for simpler verification
+    # Without temporal stats, metadata, and directional vote for simpler verification
     fe_simple = AquacultureFeatureEngineer(
         simulate_mask=False,
         random_state=42,
@@ -268,7 +268,8 @@ def test_feature_order_matches_transform():
         include_sar=True,
         include_cross_sensor_features=True,
         include_temporal_statistics=False,  # Disable for easier checking
-        include_metadata=False
+        include_metadata=False,
+        include_directional_vote=False  # Disable for simpler checking
     )
 
     fe_simple.fit(X)
@@ -335,7 +336,8 @@ def test_feature_order_with_temporal_stats():
         include_sar=True,
         include_cross_sensor_features=True,
         include_temporal_statistics=True,
-        include_metadata=False
+        include_metadata=False,
+        include_directional_vote=False  # Disable for simpler verification of temporal stats ordering
     )
 
     fe.fit(X)

@@ -40,6 +40,8 @@ class AquacultureConfig:
         Whether to include metadata features (window length, start month, etc.).
     include_normalized_optical : bool, default=True
         Whether to include normalized optical features (z-score normalization of optical bands and spectral indices within the observation window).
+    include_directional_vote : bool, default=True
+        Whether to include directional vote features based on signs of water and vegetation indices.
     """
 
     simulate_mask: bool = True
@@ -53,6 +55,7 @@ class AquacultureConfig:
     include_cross_sensor_features: bool = True
     include_metadata: bool = True
     include_normalized_optical: bool = True
+    include_directional_vote: bool = True
 
     def __post_init__(self):
         """Validate parameters after initialization."""
@@ -78,3 +81,7 @@ class AquacultureConfig:
             raise ValueError("s2_monthly_dropout must be a list of length 12.")
         if any(p < 0 or p > 1 for p in self.s2_monthly_dropout):
             raise ValueError("s2_monthly_dropout values must be between 0 and 1.")
+
+        # Validate include_directional_vote
+        if not isinstance(self.include_directional_vote, bool):
+            raise ValueError("include_directional_vote must be a boolean.")

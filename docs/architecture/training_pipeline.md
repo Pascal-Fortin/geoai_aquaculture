@@ -253,8 +253,32 @@ Features are generated in deterministic order:
 4. Cross-sensor features (if enabled) × 12 months
 5. Temporal statistics (mean, std, min, max, amplitude, slope) × all features
 6. Metadata features (window_length, start_month, end_month, n_optical_obs, fraction_optical, monthly_obs_flags)
+7. Directional vote features (fraction_positive, fraction_ge_2, fraction_eq_4, mean, min, max) - based on signs of water and vegetation indices
 
 Implemented in: `feature_engineering.py:_build_feature_names()` lines 200-248
+
+### 8.1 Directional Vote Features
+Directional vote features capture the temporal interaction of water and vegetation indices to create robust temporal statistics that are less sensitive to distribution shifts. For each month, a directional vote is calculated as:
+```
+V(i) = sign(MNDWI(i)) + sign(NDWI(i)) - sign(NDRE2(i)) - sign(NDVI(i))
+```
+Where:
+- MNDWI > 0 indicates water presence (green > swir1)
+- NDWI > 0 indicates water presence (green > nir)  
+- NDRE2 < 0 indicates healthy vegetation (nir < re2)
+- NDVI < 0 indicates sparse vegetation (nir < red)
+
+Thus, V(i) ranges from -4 to +4, with higher values indicating stronger evidence of aquaculture conditions (water present, healthy vegetation).
+
+From these monthly votes, six sample-level statistics are computed:
+- `directional_vote_fraction_positive`: Fraction of months with V > 0
+- `directional_vote_fraction_ge_2`: Fraction of months with V ≥ 2
+- `directional_vote_fraction_eq_4`: Fraction of months with V = 4
+- `directional_vote_mean`: Mean V value across months
+- `directional_vote_min`: Minimum V value
+- `directional_vote_max`: Maximum V value
+
+These features are particularly robust because they rely on the signs of indices rather than their magnitudes, making them less sensitive to absolute value changes and distribution shifts.
 
 ### Labels
 - Binary classification: 0 (non-aquaculture), 1 (aquaculture)
