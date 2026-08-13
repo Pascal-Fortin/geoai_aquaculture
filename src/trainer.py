@@ -194,6 +194,23 @@ class Trainer:
         self.config.save(config_path)
         logger.debug(f"Configuration saved to {config_path}")
 
+    def _save_feature_engineering_config(self) -> None:
+        """Save the feature engineering configuration to the experiment directory."""
+        config_path = self.experiment_dir / "feature_engineering_config.json"
+
+        # Extract feature engineering config from main config
+        if hasattr(self.config, 'feature_engineering_config'):
+            fe_config = self.config.feature_engineering_config
+
+            # Convert to dictionary if it's a config object
+            if hasattr(fe_config, '__dict__'):
+                fe_config_dict = fe_config.__dict__
+            else:
+                fe_config_dict = fe_config
+
+            with open(config_path, 'w') as f:
+                json.dump(fe_config_dict, f, indent=2)
+
     def _prepare_data(self, X: np.ndarray, y: np.ndarray, training: bool = False) -> tuple:
         """
         Prepare data by applying feature engineering.
@@ -779,6 +796,9 @@ class Trainer:
         with open(feature_names_path, 'w') as f:
             json.dump(self.feature_names, f, indent=2)
         logger.info(f"Feature names saved to {feature_names_path}")
+
+        # Save feature engineering configuration
+        self._save_feature_engineering_config()
 
         # Save best parameters
         params_path = self.experiment_dir / "best_params.json"
