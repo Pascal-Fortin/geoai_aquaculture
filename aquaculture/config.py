@@ -3,7 +3,7 @@ Configuration for the AquacultureFeatureEngineer.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, Tuple, List, Union
+from typing import Optional, Tuple, List, Union, Dict, Any
 import numpy as np
 
 
@@ -42,6 +42,15 @@ class AquacultureConfig:
         Whether to include normalized optical features (z-score normalization of optical bands and spectral indices within the observation window).
     include_directional_vote : bool, default=True
         Whether to include directional vote features based on signs of water and vegetation indices.
+    include_conditional_features : bool, default=False
+        Whether to include conditional/threshold-based features derived from temporal statistics.
+    conditional_feature_specs : list of dict, default=[]
+        Specifications for conditional features. Each dict should contain:
+        - base_feature: str, name of the temporal feature to apply thresholds to (e.g., "NDWI_max")
+        - thresholds: list of float, threshold values (1 or 2 thresholds)
+        - outputs: list of int/float, output values for each range
+          For 1 threshold: [output_low, output_high] for [<threshold, >=threshold]
+          For 2 thresholds: [output_low, output_mid, output_high] for [<t1, [t1,t2), >=t2]
     """
 
     simulate_mask: bool = True
@@ -56,6 +65,8 @@ class AquacultureConfig:
     include_metadata: bool = True
     include_normalized_optical: bool = True
     include_directional_vote: bool = True
+    include_conditional_features: bool = False
+    conditional_feature_specs: List[Dict[str, Any]] = field(default_factory=list)
 
     def __post_init__(self):
         """Validate parameters after initialization."""

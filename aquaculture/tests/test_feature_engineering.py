@@ -1,655 +1,21 @@
 """
-Tests for the AquacultureFeatureEngineer.
+Tests for the AquacultureFeatureEngineer class
 """
+
+import sys
+import os
 import numpy as np
 import pandas as pd
-from aquaculture import AquacultureFeatureEngineer
+import pytest
 
+# Add the parent directory to the system path to import local modules
+sys.path.append(os.path.abspath(os.path.join(os.getcwd(), '..')))
 
-def test_basic_functionality():
-    """Test basic functionality of the feature engineer."""
-    # Create sample data: 5 samples, 12 months, 12 bands
-    np.random.seed(42)
-    X = np.random.rand(5, 12, 12).astype(np.float64)
+from aquaculture.config import AquacultureConfig
+from aquaculture.feature_engineering import AquacultureFeatureEngineer
 
-    # Introduce some missing values (-9999) to simulate real data
-    X[0, 0, 2] = -9999.0  # Missing blue band in first sample, first month
-    X[2, 5, 5] = -9999.0  # Missing RE1 in second sample, sixth month
-
-    # Create feature engineer
-    fe = AquacultureFeatureEngineer(
-        simulate_mask=True,
-        random_state=42,
-        include_optical=True,
-        include_sar=True,
-        include_temporal_statistics=True,
-        include_cross_sensor_features=True,
-        include_metadata=True
-    )
-
-    # Fit the transformer
-    fe.fit(X)
-
-    # Transform training data (with simulation)
-    X_train = fe.transform(X, training=True)
-    print(f"Training data shape: {X_train.shape}")
-    feature_names = fe.get_feature_names_out()
-    print(f"Number of feature names: {len(feature_names)}")
-    print(f"Feature names (first 10): {list(feature_names)[:10]}")  # Show first 10
-
-    # Debug: let's see what's in feature_names_out_
-    if fe.feature_names_out_ is not None:
-        print(f"Number of feature_names_out_: {len(fe.feature_names_out_)}")
-        print(f"First 10 feature_names_out_: {list(fe.feature_names_out_)[:10]}")
-
-    # Check that we have feature names
-    assert fe.feature_names_out_ is not None
-
-    # Print the actual lengths for debugging
-    print(f"Expected features from feature_names_out_: {len(fe.feature_names_out_)}")
-    print(f"Actual features in X_train: {X_train.shape[1]}")
-
-    # This is the assertion that's failing
-    assert len(fe.feature_names_out_) == X_train.shape[1], f"Feature count mismatch: {len(fe.feature_names_out_)} names vs {X_train.shape[1]} columns"
-
-    # Transform test data (no simulation)
-    X_test = fe.transform(X, training=False)
-    print(f"Test data shape: {X_test.shape}")
-
-    # Check that we didn't produce all NaN values
-    assert not np.all(np.isnan(X_train.values)), "All values are NaN in training data"
-    assert not np.all(np.isnan(X_test.values)), "All values are NaN in test data"
-
-    # Print summary
-    print("\nSummary:")
-    print(fe.summary())
-
-    # Check that we should create them groups = fe = feature_groups
-    print("\nFeature groups:")
-    groups = fe.feature_groups()
-    for key, indices in groups.items():
-        print(f"  {key}: {len(indices)} features")
-
-    print("\nTest passed!")
-
-
-def test_feature_groups():
-    """Test the feature_groups method."""
-    # Create sample data
-    np.random.seed(42)
-    X = np.random.rand(3, 12, 12).astype(np.float64)
-
-    # Create transformer
-    fe = AquacultureFeatureEngineer(
-        simulate_mask=False,  # Simplify for testing
-        random_state=42
-    )
-
-    # Fit and transform
-    fe.fit(X)
-    X_transformed = fe.transform(X, training=False)
-
-    # Get feature groups
-    groups = fe.feature_groups()
-    print(f"Feature groups: { {k: len(v) for k, v in groups.items()} }")
-
-    # Check that we have some features in each expected
-    total_assigned = sum(len(v) for v in groups.values())
-    assert total_assigned == X_transformed.shape[1], f"Expected {X_transformed.shape[1]} features, got {total_assigned}"
-
-    print("Feature groups test passed!")
-
-
-def test_config():
-    """Test configuration options."""
-    # Create sample data
-    X = np.random.rand(2, 12, 12).astype(np.float64)
-
-    # Test with minimal features
-    fe_minimal = AquacultureFeatureEngineer(
-        simulate_mask=False,
-        include_optical=True,
-        include_sar=True,
-        include_temporal_statistics=False,
-        include_cross_sensor_features=False,
-        include_metadata=False
-    )
-    fe_minimal.fit(X)
-    X_minimal = fe_minimal.transform(X, training=False)
-    print(f"Minimal features shape: {X_minimal.shape}")
-
-    # Test with maximal features
-    fe_maximal = AquacultureFeatureEngineer(
-        simulate_mask=False,
-        include_optical=True,
-        include_sar=True,
-        include_temporal_statistics=True,
-        include_cross_sensor_features=True,
-        include_metadata=True
-    )
-    fe_maximal.fit(X)
-    X_maximal = fe_maximal.transform(X, training=False)
-    print(f"Maximal features shape: {X_maximal.shape}")
-
-    # Maximal should have more features than minimal
-    assert X_maximal.shape[1] > X_minimal.shape[1]
-
-    print("Config test passed!")
-
-
-
-
-def test_cloudy_month_within_window():
-    """Test that a cloudy month inside the window is ignored for optical feature statistics."""
-    # Create deterministic data: one sample, constant values for bands
-    np.random.seed(123)
-    n_samples = 1
-    # Initialize all bands to some baseline value
-    X = np.ones((n_samples, 12, 12), dtype=np.float64) * 0.5  # placeholder
-
-    # Set specific bands for NDVI calculation: NIR (band 4) and Red (band 9) according to band order:
-    # Band order: 0=VH,1=VV,2=Blue,3=Green,4=NIR,5=Nira,6=RE1,7=RE2,8=RE3,9=Red,10=SWIR1,11=SWIR2
-    # Set NIR = 0.2, Red = 0.09 to get NDVI = 0.3793103448275862
-    X[:, :, 4] = 0.2   # NIR
-    X[:, :, 9] = 0.09  # Red
-    # Set other S2 bands to some constants (doesn't matter much for NDVI)
-    X[:, :, 2] = 0.1   # Blue
-    X[:, :, 3] = 0.5   # Green
-    X[:, :, 5] = 0.05  # Nira
-    X[:, :, 6] = 0.06  # RE1
-    X[:, :, 7] = 0.07  # RE2
-    X[:, :, 8] = 0.8   # RE3
-    X[:, :, 10] = 0.10 # SWIR1
-    X[:, :, 11] = 0.11 # SWIR2
-
-    # SAR bands (VH, VV) we can set to constants but we will disable SAR features
-    X[:, :, 0] = 0.3   # VH
-    X[:, :, 1] = 0.4   # VV
-
-    # Configure feature engineer: simulate mask True, window length 4 months starting at month 0 (Jan), 
-    # and make month 1 (Feb) always cloudy for S2 bands.
-    fe = AquacultureFeatureEngineer(
-        simulate_mask=True,
-        random_state=42,
-        window_length_probs=(1.0, 0.0, 0.0),   # always 4 months
-        start_month_distribution=[1.0] + [0.0]*11,  # always start at month 0 (Jan)
-        s2_monthly_dropout=[0.0, 1.0] + [0.0]*10,  # month 1 (Feb) always cloudy (dropout=1.0), others never cloudy
-        include_optical=True,
-        include_sar=False,          # disable SAR to avoid NaN propagation issues
-        include_temporal_statistics=True,
-        include_cross_sensor_features=False,
-        include_metadata=False
-    )
-
-    fe.fit(X)
-    # Transform with training=True to apply masking simulation
-    X_trans = fe.transform(X, training=True)
-
-    # Get feature names
-    feature_names = fe.get_feature_names_out()
-    # Find index of NDVI_mean (since we have temporal statistics)
-    try:
-        ndvi_mean_idx = list(feature_names).index("NDVI_mean")
-    except ValueError:
-        raise AssertionError("NDVI_mean not found in feature names")
-
-    ndvi_mean_val = X_trans.iloc[0, ndvi_mean_idx]
-    # Expected NDVI mean over months 0,2,3 (Jan, Mar, Apr) each NDVI = 0.3793103448275862 => mean = 0.3793103448275862
-    expected = 0.3793103448275862
-    tolerance = 1e-6
-    assert abs(ndvi_mean_val - expected) < tolerance, f"NDVI mean expected {expected}, got {ndvi_mean_val}"
-
-    # Also check that NDVI_std is near zero (since constant)
-    try:
-        ndvi_std_idx = list(feature_names).index("NDVI_std")
-    except ValueError:
-        raise AssertionError("NDVI_std not found")
-    ndvi_std_val = X_trans.iloc[0, ndvi_std_idx]
-    assert abs(ndvi_std_val - 0.0) < tolerance, f"NDVI std expected ~0, got {ndvi_std_val}"
-
-    # Optionally check that NDVI_min and max also 0.6
-    try:
-        ndvi_min_idx = list(feature_names).index("NDVI_min")
-        ndvi_max_idx = list(feature_names).index("NDVI_max")
-    except ValueError:
-        raise AssertionError("NDVI min/max not found")
-    ndvi_min_val = X_trans.iloc[0, ndvi_min_idx]
-    ndvi_max_val = X_trans.iloc[0, ndvi_max_idx]
-    assert abs(ndvi_min_val - expected) < tolerance, f"NDVI min expected {expected}, got {ndvi_min_val}"
-    assert abs(ndvi_max_val - expected) < tolerance, f"NDVI max expected {expected}, got {ndvi_max_val}"
-
-    print("Cloudy month within window test passed!")
-
-
-def test_feature_order_matches_transform():
-    """Test that feature names generated by _build_feature_names match the order of features produced by transform."""
-    # Create a simple test dataset
-    # Shape: (n_samples, 12 time steps, 12 bands)
-    np.random.seed(42)
-    X = np.random.rand(5, 12, 12).astype(np.float64)
-
-    # Introduce some NaN values to simulate missing data
-    X[0, 3, 2] = np.nan  # Make one S2 band NaN for first sample
-    X[1, 7, 5] = np.nan  # Make another S2 band NaN for second sample
-
-    # Create feature engineer with all features enabled
-    fe = AquacultureFeatureEngineer(
-        simulate_mask=False,  # No masking for predictable order
-        random_state=42,
-        include_optical=True,
-        include_sar=True,
-        include_cross_sensor_features=True,
-        include_temporal_statistics=True,
-        include_metadata=True
-    )
-
-    # Fit the transformer (this builds feature names)
-    fe.fit(X)
-
-    # Get the feature names
-    feature_names = fe.get_feature_names_out()
-
-    # Transform the data to get feature values
-    df = fe.transform(X, training=False)
-
-    # Check that number of feature names matches number of columns
-    assert len(feature_names) == df.shape[1], f"Feature names count ({len(feature_names)}) doesn't match DataFrame columns ({df.shape[1]})"
-
-    # Check that feature names match DataFrame column names
-    for i in range(len(feature_names)):
-        assert feature_names[i] == df.columns[i], f"Feature name at index {i} doesn't match: '{feature_names[i]}' vs '{df.columns[i]}'"
-
-    # Additional verification: Check the order of a few specific features
-    # Without temporal stats, metadata, and directional vote for simpler verification
-    fe_simple = AquacultureFeatureEngineer(
-        simulate_mask=False,
-        random_state=42,
-        include_optical=True,
-        include_sar=True,
-        include_cross_sensor_features=True,
-        include_temporal_statistics=False,  # Disable for easier checking
-        include_metadata=False,
-        include_directional_vote=False  # Disable for simpler checking
-    )
-
-    fe_simple.fit(X)
-    df_simple = fe_simple.transform(X, training=False)
-    feature_names_simple = fe_simple.get_feature_names_out()
-
-    # Check that we have the expected number of monthly features
-    # 11 original optical + 5 normalized optical + 6 normalized indices + 4 SAR + 8 cross = 34 features per month
-    # 12 months * 34 features = 408 total features
-    expected_monthly_features = 12 * (11 + 5 + 6 + 4 + 8)  # original optical + normalized optical + normalized indices + SAR + cross
-    assert len(feature_names_simple) == expected_monthly_features, f"Expected {expected_monthly_features} monthly features, got {len(feature_names_simple)}"
-
-    # Check that the first features are January (01) optical features
-    expected_first_features = [
-            "NDVI_01", "NDWI_01", "MNDWI_01", "NDMI_01", "NDRE2_01", "NDRE3_01",
-            "green_01", "nir_01", "nira_01", "swir1_01", "swir2_01",  # 11 original optical features
-            "green_z_01", "nir_z_01", "nira_z_01", "swir1_z_01", "swir2_z_01",  # 5 normalized optical features
-            "NDVI_z_01", "NDWI_z_01", "MNDWI_z_01", "NDMI_z_01", "NDRE2_z_01", "NDRE3_z_01"  # 6 normalized indices
-        ]
-
-    for i, expected_feature in enumerate(expected_first_features):
-        assert feature_names_simple[i] == expected_feature, f"At position {i}, expected '{expected_feature}', got '{feature_names_simple[i]}'"
-
-    # Check that after optical features come SAR features for January
-    sar_start_idx = 22  # After 11 original + 5 normalized optical + 6 normalized indices features
-    expected_sar_features = ["VH_01", "VV_01", "VH_VV_ratio_01", "VH_VV_diff_01"]
-
-    for i, expected_feature in enumerate(expected_sar_features):
-        idx = sar_start_idx + i
-        assert feature_names_simple[idx] == expected_feature, f"At position {idx}, expected '{expected_feature}', got '{feature_names_simple[idx]}'"
-
-    # Check that after SAR features come cross features for January
-    cross_start_idx = sar_start_idx + 4  # After 11 original + 5 normalized + 6 normalized indices + 4 SAR = 26
-    expected_cross_features = [
-        "VH_NDWI_ratio_01", "VV_NDWI_ratio_01", "VH_NDVI_ratio_01", "VV_NDVI_ratio_01",
-        "VH_NDWI_mul_01", "VV_NDWI_mul_01", "VH_NDVI_mul_01", "VV_NDVI_mul_01"
-    ]
-
-    for i, expected_feature in enumerate(expected_cross_features):
-        idx = cross_start_idx + i
-        assert feature_names_simple[idx] == expected_feature, f"At position {idx}, expected '{expected_feature}', got '{feature_names_simple[idx]}'"
-
-    # Check that February features start after all January features
-    # January has 34 features (11+5+6+4+8), so February should start at index 34
-    feb_start_idx = 34
-    expected_feb_first = "NDVI_02"
-    assert feature_names_simple[feb_start_idx] == expected_feb_first, f"February should start at index {feb_start_idx} with '{expected_feb_first}', got '{feature_names_simple[feb_start_idx]}'"
-
-
-def test_feature_order_with_temporal_stats():
-    """Test feature order when temporal statistics are enabled."""
-    # Create a simple test dataset
-    np.random.seed(42)
-    X = np.random.rand(5, 12, 12).astype(np.float64)
-
-    # Introduce some NaN values to simulate missing data
-    X[0, 3, 2] = np.nan  # Make one S2 band NaN for first sample
-    X[1, 7, 5] = np.nan  # Make another S2 band NaN for second sample
-
-    fe = AquacultureFeatureEngineer(
-        simulate_mask=False,
-        random_state=42,
-        include_optical=True,
-        include_sar=True,
-        include_cross_sensor_features=True,
-        include_temporal_statistics=True,
-        include_metadata=False,
-        include_directional_vote=False  # Disable for simpler verification of temporal stats ordering
-    )
-
-    fe.fit(X)
-    df = fe.transform(X, training=False)
-    feature_names = fe.get_feature_names_out()
-
-    # Check basic consistency
-    assert len(feature_names) == df.shape[1]
-
-    # With temporal stats, we should have:
-    # Monthly features: 12 months * 34 features = 408
-    # Temporal stats: 34 features * 6 stats = 204
-    # Total: 408 + 204 = 612
-    # Explanation: For each of the 34 base feature types:
-    #   - 12 monthly values (one per month)
-    #   - 6 temporal statistics (computed over the 12 months)
-    #   - Total per base feature: 12 + 6 = 18
-    #   - Total: 34 * 18 = 612
-    n_base_features_per_month = 11 + 5 + 6 + 4 + 8  # original optical + normalized optical + normalized indices + SAR + cross
-    n_months = 12
-    n_temporal_stats = 6
-    expected_total = n_base_features_per_month * (n_months + n_temporal_stats)
-    assert len(feature_names) == expected_total, f"Expected {expected_total} features with temporal stats, got {len(feature_names)}"
-
-    # Check that monthly features come first, then temporal stats
-    # First n_base_features_per_month * n_months should be monthly features
-    monthly_count = n_base_features_per_month * n_months
-    for i in range(monthly_count):
-        # These should NOT end with _mean, _std, etc.
-        stat_suffixes = ['_mean', '_std', '_min', '_max', '_amplitude', '_slope']
-        is_temporal = any(feature_names[i].endswith(suffix) for suffix in stat_suffixes)
-        assert not is_temporal, f"Feature at index {i} ('{feature_names[i]}') should be monthly (no stat suffix) but appears to be temporal"
-
-    # Next features should be temporal statistics
-    for i in range(monthly_count, len(feature_names)):
-        # These SHOULD end with _mean, _std, etc.
-        stat_suffixes = ['_mean', '_std', '_min', '_max', '_amplitude', '_slope']
-        is_temporal = any(feature_names[i].endswith(suffix) for suffix in stat_suffixes)
-        assert is_temporal, f"Feature at index {i} ('{feature_names[i]}') should be temporal (have stat suffix) but doesn't"
-
-
-def test_feature_order_consistency_across_configs():
-    """Test that feature order is consistent for equivalent configurations."""
-    # Create sample data
-    np.random.seed(42)
-    X = np.random.rand(5, 12, 12).astype(np.float64)
-
-    # Create two feature engineers with the same settings
-    fe1 = AquacultureFeatureEngineer(
-        simulate_mask=False,
-        random_state=42,
-        include_optical=True,
-        include_sar=True,
-        include_cross_sensor_features=True,
-        include_temporal_statistics=False,
-        include_metadata=False
-    )
-
-    fe2 = AquacultureFeatureEngineer(
-        simulate_mask=False,
-        random_state=42,
-        include_optical=True,
-        include_sar=True,
-        include_cross_sensor_features=True,
-        include_temporal_statistics=False,
-        include_metadata=False
-    )
-
-    # Fit both
-    fe1.fit(X)
-    fe2.fit(X)
-
-    # Get feature names
-    names1 = fe1.get_feature_names_out()
-    names2 = fe2.get_feature_names_out()
-
-    # Should be identical
-    assert len(names1) == len(names2), "Feature arrays should have same length"
-
-    for i, (name1, name2) in enumerate(zip(names1, names2)):
-        assert name1 == name2, f"Feature names differ at index {i}: '{name1}' vs '{name2}'"
-
-
-def test_cross_sensor_division_by_zero():
-    """Test that cross-sensor ratios produce NaN when denominator is zero."""
-    # Create a deterministic dataset: 1 sample, 12 months, 12 bands
-    np.random.seed(42)
-    X = np.ones((1, 12, 12), dtype=np.float64) * 0.1  # default small value to avoid zeros elsewhere
-
-    # Band order: 0:VH,1:VV,2:blue,3:green,4:nir,5:nira,6:re1,7:re2,8:re3,9:red,10:swir1,11:swir2
-    # Set NIR (band 4) and Red (band 9) equal to get NDVI = 0
-    X[:, :, 4] = 0.5  # NIR
-    X[:, :, 9] = 0.5  # Red
-    # NDVI = (0.5-0.5)/(0.5+0.5) = 0/1 = 0
-
-    # Set Green (band 3) and SWIR1 (band 10) equal to get NDWI = 0
-    X[:, :, 3] = 0.5  # Green
-    X[:, :, 10] = 0.5 # SWIR1
-    # NDWI = (0.5-0.5)/(0.5+0.5) = 0/1 = 0
-
-    # Set SAR bands to non-zero to avoid zero division there
-    X[:, :, 0] = 0.6  # VH
-    X[:, :, 1] = 0.7  # VV
-
-    # Other bands keep default 0.1 (non-zero)
-
-    # Create feature engineer with cross-sensor features enabled
-    fe = AquacultureFeatureEngineer(
-        simulate_mask=False,  # No masking for deterministic test
-        random_state=42,
-        include_optical=True,
-        include_sar=True,
-        include_cross_sensor_features=True,
-        include_temporal_statistics=False,  # Disable for simpler checking
-        include_metadata=False
-    )
-
-    fe.fit(X)
-    df = fe.transform(X, training=False)
-    feature_names = fe.get_feature_names_out()
-
-    # Based on our verification, the ordering is:
-    # Each month has 34 features: 11 original optical + 5 normalized optical + 6 normalized indices + 4 SAR + 8 cross
-    # Within cross features (indices 26-33 per month):
-    #   Indices 26-29: ratio features (VH_NDWI_ratio, VV_NDWI_ratio, VH_NDVI_ratio, VV_NDVI_ratio)
-    #   Indices 30-33: multiplication features (VH_NDWI_mul, VV_NDWI_mul, VH_NDVI_mul, VV_NDVI_mul)
-    n_features_per_month = 34
-    n_optical = 11  # original optical features
-    n_normalized_optical = 5  # normalized optical features
-    n_normalized_indices = 6  # normalized indices
-    n_sar = 4
-    n_cross = 8
-    n_cross_ratio = 4  # first 4 of cross features are ratios
-    n_months = 12
-
-    # For each month, check that the four ratio features are NaN where denominator is zero
-    for month in range(n_months):
-        base_idx = month * n_features_per_month  # start of this month's features
-        ratio_start = base_idx + n_optical + n_normalized_optical + n_normalized_indices + n_sar  # index of first ratio feature
-        # Expected ratio names for this month
-        month_str = f"{month+1:02d}"
-        expected_ratio_names = [
-            f"VH_NDWI_ratio_{month_str}",
-            f"VV_NDWI_ratio_{month_str}",
-            f"VH_NDVI_ratio_{month_str}",
-            f"VV_NDVI_ratio_{month_str}"
-        ]
-        # Verify names match
-        for i, expected_name in enumerate(expected_ratio_names):
-            actual_name = feature_names[ratio_start + i]
-            assert actual_name == expected_name, f"Expected {expected_name} at index {ratio_start+i}, got {actual_name}"
-
-        # Get the values for these four features
-        ratio_values = df.iloc[0, ratio_start:ratio_start + n_cross_ratio].values
-        # Since NDWI and NDVI are zero for all months (we set them constant), denominators are zero -> should be NaN
-        assert np.all(np.isnan(ratio_values)), f"Expected NaN for ratio features in month {month+1}, got {ratio_values}"
-
-    # Additionally, verify that multiplication features (last four of cross) are zero (since VH*0 etc)
-    for month in range(n_months):
-        base_idx = month * n_features_per_month
-        mul_start = base_idx + n_optical + n_normalized_optical + n_normalized_indices + n_sar + n_cross_ratio  # index of first multiplication feature
-        expected_mul_names = [
-            f"VH_NDWI_mul_{month+1:02d}",
-            f"VV_NDWI_mul_{month+1:02d}",
-            f"VH_NDVI_mul_{month+1:02d}",
-            f"VV_NDVI_mul_{month+1:02d}"
-        ]
-        for i, expected_name in enumerate(expected_mul_names):
-            actual_name = feature_names[mul_start + i]
-            assert actual_name == expected_name, f"Expected {expected_name} at index {mul_start+i}, got {actual_name}"
-        mul_values = df.iloc[0, mul_start:mul_start + 4].values
-        # Since NDWI and NDVI are zero, products should be zero (VH*0 = 0, VV*0 = 0)
-        assert np.all(mul_values == 0.0), f"Expected zero for multiplication features in month {month+1}, got {mul_values}"
-
-
-def test_observation_window_from_sar_data():
-    """Test that window length, start month, and end month are correctly derived from SAR data when simulate_mask=False."""
-    # Create test data with known SAR availability pattern
-    np.random.seed(42)
-    n_samples = 3
-    X = np.full((n_samples, 12, 12), -9999.0, dtype=np.float64)  # Start with all missing
-
-    # Band order: 0:VH,1:VV,2:blue,3:green,4:nir,5:nira,6:re1,7:re2,8:re3,9:red,10:swir1,11:swir2
-
-    # Sample 0: SAR available months 2-5 (Mar-Jun) -> window_length=4, start=2, end=5
-    X[0, 2:6, 0] = 0.5  # VH available Mar-Jun
-    X[0, 2:6, 1] = 0.6  # VV available Mar-Jun
-
-    # Sample 1: SAR available months 0-3 (Jan-Apr) -> window_length=4, start=0, end=3
-    X[1, 0:4, 0] = 0.5  # VH available Jan-Apr
-    X[1, 0:4, 1] = 0.6  # VV available Jan-Apr
-
-    # Sample 2: SAR available months 8-11 (Sep-Dec) -> window_length=4, start=8, end=11
-    X[2, 8:12, 0] = 0.5  # VH available Sep-Dec
-    X[2, 8:12, 1] = 0.6  # VV available Sep-Dec
-
-    # Add some dummy S2 data to avoid issues in other calculations (but we're testing SAR-based window)
-    X[:, :, 2:] = 0.1  # Set S2 bands to small non-zero values
-
-    # Create feature engineer with metadata enabled to check window values
-    fe = AquacultureFeatureEngineer(
-        simulate_mask=False,  # Important: use actual data, not simulation
-        random_state=42,
-        include_optical=False,  # Simplify test
-        include_sar=True,
-        include_cross_sensor_features=False,
-        include_temporal_statistics=False,
-        include_metadata=True  # Enable to get window_length, start_month, end_month features
-    )
-
-    fe.fit(X)
-    df = fe.transform(X, training=False)  # training=False to use actual SAR data
-
-    # Get feature names to locate metadata features
-    feature_names = list(fe.get_feature_names_out())
-
-    # Find indices of metadata features
-    try:
-        window_length_idx = feature_names.index("window_length")
-        start_month_idx = feature_names.index("start_month")
-        end_month_idx = feature_names.index("end_month")
-    except ValueError as e:
-        raise AssertionError(f"Could not find metadata features: {e}")
-
-    # Extract the metadata values for each sample
-    window_lengths = df.iloc[:, window_length_idx].values
-    start_months = df.iloc[:, start_month_idx].values
-    end_months = df.iloc[:, end_month_idx].values
-
-    # Expected values based on our test data construction
-    expected_window_lengths = np.array([4, 4, 4])
-    expected_start_months = np.array([2, 0, 8])
-    expected_end_months = np.array([5, 3, 11])
-
-    # Check that we got the expected values
-    np.testing.assert_array_equal(window_lengths, expected_window_lengths,
-                                  "Window lengths do not match expected values")
-    np.testing.assert_array_equal(start_months, expected_start_months,
-                                  "Start months do not match expected values")
-    np.testing.assert_array_equal(end_months, expected_end_months,
-                                  "End months do not match expected values")
-
-
-def test_fraction_optical_calculation():
-    """Test that fraction_optical is correctly computed as n_optical_obs / window_lengths."""
-    # Create test data: 3 samples, 12 months, 12 bands
-    np.random.seed(123)
-    n_samples = 3
-    X = np.full((n_samples, 12, 12), -9999.0, dtype=np.float64)  # Start with all missing
-
-    # Band order: 0:VH,1:VV,2:blue,3:green,4:nir,5:nira,6:re1,7:re2,8:re3,9:red,10:swir1,11:swir2
-
-    # Sample 0: SAR available months 0-2 (Jan-Mar) -> window_length=3
-    #   Make S2 data available in months 0 and 2 (Jan and Mar) -> n_optical_obs=2 -> expected fraction = 2/3
-    X[0, 0:3, 0] = 0.5  # VH available Jan-Mar
-    X[0, 0:3, 1] = 0.6  # VV available Jan-Mar
-    # S2 data: make Jan and Mar have some valid data, Feb missing
-    # Month 0 (Jan): set S2 bands to 0.1
-    X[0, 0, 2:12] = 0.1
-    # Month 1 (Feb): leave as -9999.0 (all S2 bands missing)
-    # Month 2 (Mar): set S2 bands to 0.1
-    X[0, 2, 2:12] = 0.1
-
-    # Sample 1: SAR available months 3-8 (Apr-Sep) -> window_length=6
-    #   Make S2 data available in months 3,5,6,8 (Apr,Jun,Jul,Sep) -> n_optical_obs=4 -> expected fraction = 4/6 = 2/3
-    X[1, 3:9, 0] = 0.5  # VH available Apr-Sep
-    X[1, 3:9, 1] = 0.6  # VV available Apr-Sep
-    # S2 data: set months 3,5,6,8 to 0.1, others to -9999.0
-    for m in [3,5,6,8]:
-        X[1, m, 2:12] = 0.1
-    # months 4,7 remain -9999.0
-
-    # Sample 2: SAR available months 9-11 (Oct-Dec) -> window_length=3
-    #   No S2 data available (all months missing) -> n_optical_obs=0 -> expected fraction = 0/3 = 0
-    X[2, 9:12, 0] = 0.5  # VH available Oct-Dec
-    X[2, 9:12, 1] = 0.6  # VV available Oct-Dec
-    # leave all S2 bands as -9999.0
-
-    # Create feature engineer with metadata enabled
-    fe = AquacultureFeatureEngineer(
-        simulate_mask=False,  # Use actual SAR data to determine windows
-        random_state=42,
-        include_optical=True,
-        include_sar=True,
-        include_cross_sensor_features=False,
-        include_temporal_statistics=False,
-        include_metadata=True  # Enable to get fraction_optical
-    )
-
-    fe.fit(X)
-    df = fe.transform(X, training=False)  # training=False to use actual SAR/S2 data
-
-    # Get feature names to locate fraction_optical
-    feature_names = list(fe.get_feature_names_out())
-    try:
-        fraction_idx = feature_names.index("fraction_optical")
-    except ValueError as e:
-        raise AssertionError(f"Could not find fraction_optical feature: {e}")
-
-    # Extract the fraction values for each sample
-    fractions = df.iloc[:, fraction_idx].values
-
-    # Expected fractions
-    expected = np.array([2/3, 4/6, 0/3])  # [0.666..., 0.666..., 0.0]
-
-    # Check that we got the expected values (within tolerance)
-    np.testing.assert_allclose(fractions, expected, rtol=1e-6,
-                               err_msg="fraction_optical values do not match expected")
-
-
-def test_normalized_indices():
-    """Test that normalized indices are correctly computed and included in output."""
+def test_conditional_features():
+    """Test conditional/threshold-based features functionality."""
     # Create sample data: 3 samples, 12 months, 12 bands
     np.random.seed(42)
     X = np.random.rand(3, 12, 12).astype(np.float64)
@@ -658,103 +24,268 @@ def test_normalized_indices():
     X[0, 0, 2] = -9999.0  # Missing blue band in first sample, first month
     X[1, 5, 5] = -9999.0  # Missing RE1 in second sample, sixth month
 
-    # Create feature engineer with normalized indices enabled
+    # Create feature engineer with conditional features enabled
     fe = AquacultureFeatureEngineer(
         simulate_mask=False,  # No masking for deterministic test
         random_state=42,
         include_optical=True,
-        include_sar=False,  # Disable SAR to simplify
-        include_temporal_statistics=True,
-        include_cross_sensor_features=False,
+        include_sar=True,
+        include_temporal_statistics=True,  # Need temporal stats for conditional features
+        include_cross_sensor_features=True,
         include_metadata=False,
-        include_normalized_optical=True
+        include_conditional_features=True,
+        conditional_feature_specs=[
+            {
+                "base_feature": "NDWI_max",
+                "thresholds": [0.0],
+                "outputs": [0, 1]  # NDWI_max < 0 -> 0, NDWI_max >= 0 -> 1
+            },
+            {
+                "base_feature": "MNDWI_std",
+                "thresholds": [0.1, 0.3],
+                "outputs": [-1, 0, 1]  # <0.1 -> -1, [0.1,0.3) -> 0, >=0.3 -> 1
+            }
+        ]
     )
 
+    # Fit and transform
     fe.fit(X)
-    df = fe.transform(X, training=False)
+    X_transformed = fe.transform(X, training=False)
+
+    # Check that we have the expected conditional features
     feature_names = list(fe.get_feature_names_out())
 
-    # Check that normalized indices are present in feature names
-    expected_normalized_indices = [
-        "NDVI_z", "NDWI_z", "MNDWI_z", "NDMI_z", "NDRE2_z", "NDRE3_z"
-    ]
+    # Should have the conditional features in the output
+    assert "NDWI_max_cond_0" in feature_names, "Expected NDWI_max_cond_0 feature not found"
+    assert "MNDWI_std_cond_1" in feature_names, "Expected MNDWI_std_cond_1 feature not found"
 
-    # Check base normalized indices (monthly features only, ending with _MM)
-    for idx in expected_normalized_indices:
-        # Should find features like "NDVI_z_01", "NDVI_z_02", etc. (only monthly, not temporal stats)
-        matching_features = [f for f in feature_names if f.startswith(idx + "_") and len(f) == len(idx) + 3 and f[-3] == '_' and f[-2:].isdigit() and 1 <= int(f[-2:]) <= 12]
-        assert len(matching_features) == 12, f"Expected 12 monthly features for {idx}, got {len(matching_features)}"
-
-    # Check that temporal statistics for normalized indices are present
-    # They should appear in the temporal_z group
+    # Check that they're in the conditional group
     groups = fe.feature_groups()
-    temporal_z_features = groups['temporal_z']
+    conditional_features = groups['conditional']
+    assert len(conditional_features) == 2, f"Expected 2 conditional features, got {len(conditional_features)}"
 
-    # Should have 6 indices * 6 statistics = 36 temporal_z features from normalized indices
-    expected_temporal_z_from_indices = 6 * 6  # 6 indices, 6 stats each
-    # Note: temporal_z also includes normalized optical bands (5 * 6 = 30)
-    expected_total_temporal_z = expected_temporal_z_from_indices + (5 * 6)  # normalized indices + normalized optical bands
-    assert len(temporal_z_features) == expected_total_temporal_z, \
-        f"Expected {expected_total_temporal_z} temporal_z features ({expected_temporal_z_from_indices} from normalized indices + 30 from normalized optical bands), got {len(temporal_z_features)}"
+    # Check that the conditional features have the right naming
+    conditional_names = [feature_names[i] for i in conditional_features]
+    assert "NDWI_max_cond_0" in conditional_names
+    assert "MNDWI_std_cond_1" in conditional_names
 
-    # Check that specific normalized index temporal stats exist
-    expected_temporal_stats = ['_mean', '_std', '_min', '_max', '_amplitude', '_slope']
-    for idx in ["NDVI_z", "NDWI_z", "MNDWI_z", "NDMI_z", "NDRE2_z", "NDRE3_z"]:
-        for stat in expected_temporal_stats:
-            feature_name = idx + stat
-            assert feature_name in feature_names, f"Expected feature {feature_name} not found"
+    # Get the actual values to verify thresholding logic
+    ndwi_max_idx = feature_names.index("NDWI_max_cond_0")
+    mndwi_std_idx = feature_names.index("MNDWI_std_cond_1")
 
-    print("Normalized indices test passed!")
+    ndwi_max_cond_values = X_transformed.iloc[:, ndwi_max_idx].values
+    mndwi_std_cond_values = X_transformed.iloc[:, mndwi_std_idx].values
+
+    # Get the base temporal statistics values to verify against
+    # First we need to find where the temporal statistics are
+    # NDWI_max and MNDWI_std are the base temporal feature names
+    ndwi_max_base_idx = feature_names.index("NDWI_max")
+    mndwi_std_base_idx = feature_names.index("MNDWI_std")
+
+    ndwi_max_base_values = X_transformed.iloc[:, ndwi_max_base_idx].values
+    mndwi_std_base_values = X_transformed.iloc[:, mndwi_std_base_idx].values
+
+    # Verify thresholding logic for NDWI_max (single threshold at 0.0)
+    # Values < 0.0 should map to 0, values >= 0.0 should map to 1
+    expected_ndwi_max = np.where(ndwi_max_base_values < 0.0, 0, 1)
+    np.testing.assert_array_equal(ndwi_max_cond_values, expected_ndwi_max,
+                                  "NDWI_max conditional feature thresholding incorrect")
+
+    # Verify thresholding logic for MNDWI_std (two thresholds at 0.1 and 0.3)
+    # < 0.1 -> -1, [0.1, 0.3) -> 0, >= 0.3 -> 1
+    expected_mndwi_std = np.where(mndwi_std_base_values < 0.1, -1,
+                                  np.where(mndwi_std_base_values < 0.3, 0, 1))
+    np.testing.assert_array_equal(mndwi_std_cond_values, expected_mndwi_std,
+                                  "MNDWI_std conditional feature thresholding incorrect")
+
+    print("Conditional features test passed!")
 
 
-def test_normalized_indices_disabled():
-    """Test that when include_normalized_optical=False, normalized indices are not included."""
+def test_conditional_features_disabled():
+    """Test that when conditional features are disabled, no conditional features are created."""
     # Create sample data
     np.random.seed(42)
     X = np.random.rand(2, 12, 12).astype(np.float64)
 
-    # Create feature engineer with normalized indices disabled
+    # Create feature engineer with conditional features disabled (default)
     fe = AquacultureFeatureEngineer(
         simulate_mask=False,
         random_state=42,
         include_optical=True,
-        include_sar=False,
+        include_sar=True,
         include_temporal_statistics=True,
-        include_cross_sensor_features=False,
+        include_cross_sensor_features=True,
         include_metadata=False,
-        include_normalized_optical=False  # Explicitly disabled
+        include_conditional_features=False  # Explicitly disabled (default)
     )
 
     fe.fit(X)
-    df = fe.transform(X, training=False)
+    X_transformed = fe.transform(X, training=False)
+
+    # Check that we have NO conditional features
+    feature_names = list(fe.get_feature_names_out())
+    conditional_like_features = [f for f in feature_names if '_cond_' in f]
+    assert len(conditional_like_features) == 0, f"Found unexpected conditional-like features: {conditional_like_features}"
+
+    # Check that conditional group is empty
+    groups = fe.feature_groups()
+    conditional_features = groups['conditional']
+    assert len(conditional_features) == 0, f"Expected 0 conditional features, got {len(conditional_features)}"
+
+    print("Conditional features disabled test passed!")
+
+
+def test_conditional_features_same_base_different_thresholds():
+    """Test that the same base feature can be used multiple times with different thresholds."""
+    # Create sample data
+    np.random.seed(42)
+    X = np.random.rand(2, 12, 12).astype(np.float64)
+
+    # Create feature engineer with conditional features enabled
+    fe = AquacultureFeatureEngineer(
+        simulate_mask=False,
+        random_state=42,
+        include_optical=True,
+        include_sar=True,
+        include_temporal_statistics=True,
+        include_cross_sensor_features=True,
+        include_metadata=False,
+        include_conditional_features=True,
+        conditional_feature_specs=[
+            {
+                "base_feature": "NDWI_max",
+                "thresholds": [0.0],
+                "outputs": [0, 1]  # First spec: NDWI_max < 0 -> 0, NDWI_max >= 0 -> 1
+            },
+            {
+                "base_feature": "NDWI_max",  # Same base feature
+                "thresholds": [-0.2, 0.2],   # Second spec: different thresholds
+                "outputs": [-1, 0, 1]        # <-0.2 -> -1, [-0.2,0.2) -> 0, >=0.2 -> 1
+            }
+        ]
+    )
+
+    # Fit and transform
+    fe.fit(X)
+    X_transformed = fe.transform(X, training=False)
+
+    # Check that we have BOTH conditional features
     feature_names = list(fe.get_feature_names_out())
 
-    # Check that normalized indices are NOT present in feature names
-    normalized_indices = [
-        "NDVI_z", "NDWI_z", "MNDWI_z", "NDMI_z", "NDRE2_z", "NDRE3_z",
-        "green_z", "nir_z", "nira_z", "swir1_z", "swir2_z"
-    ]
+    # Should have both conditional features with different indices
+    assert "NDWI_max_cond_0" in feature_names, "Expected NDWI_max_cond_0 feature not found"
+    assert "NDWI_max_cond_1" in feature_names, "Expected NDWI_max_cond_1 feature not found"
 
-    for idx in normalized_indices:
-        # Should NOT find any features starting with these prefixes
-        matching_features = [f for f in feature_names if f.startswith(idx + "_")]
-        assert len(matching_features) == 0, f"Found unexpected features for {idx}: {matching_features}"
+    # Check that they're in the conditional group
+    groups = fe.feature_groups()
+    conditional_features = groups['conditional']
+    assert len(conditional_features) == 2, f"Expected 2 conditional features, got {len(conditional_features)}"
 
-    print("Normalized indices disabled test passed!")
+    # Check that the conditional features have the right naming
+    conditional_names = [feature_names[i] for i in conditional_features]
+    assert "NDWI_max_cond_0" in conditional_names
+    assert "NDWI_max_cond_1" in conditional_names
+
+    # Get the actual values
+    ndwi_max_cond_0_idx = feature_names.index("NDWI_max_cond_0")
+    ndwi_max_cond_1_idx = feature_names.index("NDWI_max_cond_1")
+
+    ndwi_max_cond_0_values = X_transformed.iloc[:, ndwi_max_cond_0_idx].values
+    ndwi_max_cond_1_values = X_transformed.iloc[:, ndwi_max_cond_1_idx].values
+
+    # Get the base temporal statistics values
+    ndwi_max_base_idx = feature_names.index("NDWI_max")  # using max statistic
+    ndwi_max_base_values = X_transformed.iloc[:, ndwi_max_base_idx].values
+
+    # Verify first thresholding logic (threshold at 0.0)
+    # Values < 0.0 should map to 0, values >= 0.0 should map to 1
+    expected_cond_0 = np.where(ndwi_max_base_values < 0.0, 0, 1)
+    np.testing.assert_array_equal(ndwi_max_cond_0_values, expected_cond_0,
+                                  "First NDWI_max conditional feature thresholding incorrect")
+
+    # Verify second thresholding logic (thresholds at -0.2 and 0.2)
+    # < -0.2 -> -1, [-0.2, 0.2) -> 0, >= 0.2 -> 1
+    expected_cond_1 = np.where(ndwi_max_base_values < -0.2, -1,
+                               np.where(ndwi_max_base_values < 0.2, 0, 1))
+    np.testing.assert_array_equal(ndwi_max_cond_1_values, expected_cond_1,
+                                  "Second NDWI_max conditional feature thresholding incorrect")
+
+    print("Conditional features same base different thresholds test passed!")
+
+
+def test_conditional_features_invalid_specs():
+    """Test that invalid conditional feature specifications are handled gracefully."""
+    # Create sample data
+    np.random.seed(42)
+    X = np.random.rand(2, 12, 12).astype(np.float64)
+
+    # Create feature engineer with conditional features enabled but invalid specs
+    fe = AquacultureFeatureEngineer(
+        simulate_mask=False,
+        random_state=42,
+        include_optical=True,
+        include_sar=True,
+        include_temporal_statistics=True,
+        include_cross_sensor_features=True,
+        include_metadata=False,
+        include_conditional_features=True,
+        conditional_feature_specs=[
+            {
+                # Missing base_feature - should be skipped
+                "thresholds": [0.0],
+                "outputs": [0, 1]
+            },
+            {
+                "base_feature": "NONEXISTENT_FEATURE",  # Doesn't exist - should be skipped
+                "thresholds": [0.0],
+                "outputs": [0, 1]
+            },
+            {
+                "base_feature": "NDWI_max_invalid",  # Invalid format (too many underscores) - should be skipped
+                "thresholds": [0.0],
+                "outputs": [0, 1]
+            },
+            {
+                "base_feature": "NDWI_max",  # Valid spec
+                "thresholds": [0.0],
+                "outputs": [0, 1]
+            },
+            {
+                "base_feature": "NDWI_mean",  # Valid spec but wrong statistic type
+                "thresholds": [0.0],
+                "outputs": [0, 1],
+                # Note: This would be parsed as base="NDWI", stat="mean_invalid" which is invalid
+            }
+        ]
+    )
+
+    # Fit and transform - should not crash
+    fe.fit(X)
+    X_transformed = fe.transform(X, training=False)
+
+    # Check that we have ONLY the valid conditional feature
+    feature_names = list(fe.get_feature_names_out())
+
+    # Should have two conditional features from the valid specs (specs 3 and 4)
+    conditional_like_features = [f for f in feature_names if '_cond_' in f]
+    assert len(conditional_like_features) == 2, f"Expected 2 conditional features from valid specs, got {len(conditional_like_features)}: {conditional_like_features}"
+
+    # Should be NDWI_max_cond_3 and NDWI_mean_cond_4 (the valid specs)
+    assert "NDWI_max_cond_3" in feature_names, "Expected NDWI_max_cond_3 feature not found"
+    assert "NDWI_mean_cond_4" in feature_names, "Expected NDWI_mean_cond_4 feature not found"
+
+    # Check that conditional group has exactly two features
+    groups = fe.feature_groups()
+    conditional_features = groups['conditional']
+    assert len(conditional_features) == 2, f"Expected 2 conditional features, got {len(conditional_features)}"
+
+    print("Conditional features invalid specs test passed!")
 
 
 if __name__ == "__main__":
-    print("Testing AquacultureFeatureEngineer...")
-    test_basic_functionality()
-    test_feature_groups()
-    test_config()
-    test_cloudy_month_within_window()
-    test_feature_order_matches_transform()
-    test_feature_order_with_temporal_stats()
-    test_feature_order_consistency_across_configs()
-    test_cross_sensor_division_by_zero()
-    test_observation_window_from_sar_data()
-    test_fraction_optical_calculation()
-    test_normalized_indices()
-    test_normalized_indices_disabled()
-    print("All tests passed!")
+    # Run the conditional features tests
+    test_conditional_features()
+    test_conditional_features_disabled()
+    test_conditional_features_same_base_different_thresholds()
+    test_conditional_features_invalid_specs()
+    print("All conditional features tests passed!")

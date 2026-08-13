@@ -74,6 +74,8 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
         include_metadata: bool = True,
         include_normalized_optical: bool = True,
         include_directional_vote: bool = True,
+        include_conditional_features: bool = False,
+        conditional_feature_specs: Optional[List[Dict[str, Any]]] = None,
     ):
         self.simulate_mask = simulate_mask
         self.random_state = random_state
@@ -87,12 +89,17 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
         self.include_metadata = include_metadata
         self.include_normalized_optical = include_normalized_optical
         self.include_directional_vote = include_directional_vote
+        self.include_conditional_features = include_conditional_features
+        self.conditional_feature_specs = conditional_feature_specs if conditional_feature_specs is not None else []
 
         # Directional vote feature names
         self._directional_vote_feature_names = ["directional_vote"]
 
         # Placeholder for directional vote statistics (to be computed during transform)
         self._directional_vote_stats = None
+
+        # Placeholder for conditional feature statistics (to be computed during transform)
+        self._conditional_features = None
 
         # Internal random generator
         self._rng: Optional[np.random.Generator] = None
@@ -287,6 +294,21 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
                 "directional_vote_min",
                 "directional_vote_max",
             ])
+
+        # Conditional/threshold-based features (computed from temporal statistics)
+        if self.include_conditional_features and self.include_temporal_statistics:
+            # These are computed statistics, not monthly features
+            for i, spec in enumerate(self.conditional_feature_specs):
+                base_feature = spec.get("base_feature", "")
+                if base_feature:
+                    # Validate the base_feature format: "{base_name}_{statistic}"
+                    parts = base_feature.rsplit('_', 1)
+                    if len(parts) == 2:
+                        base_name, statistic = parts
+                        # Check if statistic is a valid temporal statistic
+                        if statistic in self._stat_names:
+                            # Each valid spec generates exactly one conditional feature
+                            feature_names.append(f"{base_feature}_cond_{i}")
 
         self.feature_names_out_ = feature_names
 
@@ -670,6 +692,10 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
 
             # Build feature_arrays list
             feature_arrays = [monthly_features_2d, temporal_features]
+
+            # Compute conditional features if enabled
+            if self.include_conditional_features:
+                self._compute_conditional_features(temporal_features, n_samples)
         else:
             # If not computing temporal statistics, we still need to use the monthly features
             # Reshape to 2D for concatenation with other features
@@ -709,6 +735,10 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
         if self.include_directional_vote and self._directional_vote_stats is not None:
             feature_arrays.append(self._directional_vote_stats)
 
+        # Add conditional features if computed
+        if self.include_conditional_features and self._conditional_features is not None:
+            feature_arrays.append(self._conditional_features)
+
         # Now combine all feature arrays horizontally
         if feature_arrays:
             X_combined = np.concatenate(feature_arrays, axis=1)
@@ -734,6 +764,115 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
             df.columns = [f"feature_{i}" for i in range(df.shape[1])]
 
         return df
+
+    def _compute_conditional_features(self, temporal_features: np.ndarray, n_samples: int) -> None:
+        """Compute conditional/threshold-based features from temporal statistics.
+
+        Parameters
+        ----------
+        temporal_features : np.ndarray
+            Array of shape (n_samples, n_temporal_features * 6) containing temporal statistics
+            in the order [mean, std, min, max, amplitude, slope] for each feature.
+        n_samples : int
+            Number of samples in the dataset.
+        """
+        if not self.include_conditional_features or not self.conditional_feature_specs:
+            self._conditional_features = None
+            return
+
+        # We need to map temporal feature names to their indices in the temporal_features array
+        # First, let's reconstruct the temporal feature names in the same order as they were computed
+        temp_feature_names = []
+        # Optical features
+        if self.include_optical:
+            temp_feature_names.extend(self._optical_feature_names)
+        # Normalized optical features (if enabled)
+        if self.include_optical and self.include_normalized_optical:
+            temp_feature_names.extend(self._normalized_optical_feature_names)
+        # SAR features
+        if self.include_sar:
+            temp_feature_names.extend(self._sar_feature_names)
+        # Cross sensor features (only if both base types are present and we want them)
+        if self.include_cross_sensor_features and self.include_optical and self.include_sar:
+            temp_feature_names.extend(self._cross_sensor_feature_names)
+
+        # Now temporal_features has shape (n_samples, len(temp_feature_names) * 6)
+        # where each feature's 6 statistics are: [mean, std, min, max, amplitude, slope]
+
+        conditional_arrays = []
+
+        for spec_idx, spec in enumerate(self.conditional_feature_specs):
+            base_feature_spec = spec.get("base_feature", "")
+            thresholds = spec.get("thresholds", [])
+            outputs = spec.get("outputs", [])
+
+            # Parse the base_feature_spec to extract base feature name and statistic type
+            # Format: "{base_name}_{statistic}" (e.g., "NDWI_max")
+            parts = base_feature_spec.rsplit('_', 1)
+            if len(parts) != 2:
+                # Invalid format, skip this spec
+                continue
+            base_name, stat_type = parts
+
+            # Map statistic type to index
+            stat_to_index = {
+                'mean': 0,
+                'std': 1,
+                'min': 2,
+                'max': 3,
+                'amplitude': 4,
+                'slope': 5
+            }
+
+            if stat_type not in stat_to_index:
+                # Unknown statistic type, skip this spec
+                continue
+            stat_index = stat_to_index[stat_type]
+
+            # Find the index of this base feature in our temporal feature names
+            try:
+                feature_idx = temp_feature_names.index(base_name)
+            except ValueError:
+                # Base feature not found, skip this spec
+                continue
+
+            # Extract the statistic values for this feature across all samples
+            # Each feature occupies 6 consecutive columns in temporal_features
+            start_col = feature_idx * 6
+            stat_values = temporal_features[:, start_col + stat_index]  # shape: (n_samples,)
+
+            # Initialize output array with default value (first output)
+            if len(outputs) > 0:
+                conditional_values = np.full(n_samples, outputs[0])
+            else:
+                conditional_values = np.zeros(n_samples)
+
+            # Apply thresholds
+            if len(thresholds) == 1 and len(outputs) >= 2:
+                # Single threshold: [<threshold -> outputs[0], >=threshold -> outputs[1]]
+                threshold = thresholds[0]
+                mask = stat_values >= threshold
+                conditional_values[mask] = outputs[1]
+            elif len(thresholds) == 2 and len(outputs) >= 3:
+                # Two thresholds:
+                # [<thresholds[0] -> outputs[0],
+                #  [thresholds[0], thresholds[1]) -> outputs[1],
+                #  [thresholds[1], inf) -> outputs[2]]
+                t1, t2 = thresholds[0], thresholds[1]
+                mask_low = stat_values < t1
+                mask_mid = (stat_values >= t1) & (stat_values < t2)
+                mask_high = stat_values >= t2
+
+                conditional_values[mask_low] = outputs[0]
+                conditional_values[mask_mid] = outputs[1]
+                conditional_values[mask_high] = outputs[2]
+
+            conditional_arrays.append(conditional_values.reshape(-1, 1))  # shape: (n_samples, 1)
+
+        if conditional_arrays:
+            self._conditional_features = np.concatenate(conditional_arrays, axis=1)
+        else:
+            self._conditional_features = None
 
     def get_feature_names_out(self, input_features: Optional[List[str]] = None) -> np.ndarray:
         """Get output feature names for transformation.
@@ -774,7 +913,7 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
         Returns
         -------
         groups : dict
-            Dictionary with keys 'sar', 'optical', 'cross', 'temporal', 'temporal_z', 'metadata', 'directional_vote', 'other'
+            Dictionary with keys 'sar', 'optical', 'cross', 'temporal', 'temporal_z', 'metadata', 'directional_vote', 'conditional', 'other'
             mapping to lists of column indices in the transformed data.
         """
         if self.feature_names_out_ is None:
@@ -789,6 +928,7 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
             'temporal_z': [],
             'metadata': [],
             'directional_vote': [],
+            'conditional': [],
             'other': []
         }
 
@@ -818,6 +958,11 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
             # Directional vote features
             elif name in directional_vote_set:
                 groups['directional_vote'].append(i)
+            # Conditional features: {base_feature}_cond_{index} where index is integer
+            elif '_cond_' in name:
+                parts = name.split('_')
+                if len(parts) >= 3 and parts[-2] == 'cond' and parts[-1].isdigit():
+                    groups['conditional'].append(i)
             # Temporal statistics: ends with _{stat}
             elif any(name.endswith(f"_{stat}") for stat in stat_set):
                 # Check if this is a temporal stat of a normalized optical feature

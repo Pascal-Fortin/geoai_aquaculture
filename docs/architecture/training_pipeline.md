@@ -172,6 +172,7 @@ flowchart TD
 - Transforms raw satellite data into engineered features
 - Computes spectral indices, SAR features, cross-sensor features
 - Calculates temporal statistics and metadata features
+- Computes conditional/threshold-based features from temporal statistics
 - Implemented in: `feature_engineering.py:transform()` lines 250-557
 
 #### 2.9 Model Training

@@ -252,6 +252,10 @@ class Trainer:
                     include_cross_sensor_features=self.config.feature_engineering_config.include_cross_sensor_features,
                     include_temporal_statistics=self.config.feature_engineering_config.include_temporal_statistics,
                     include_metadata=self.config.feature_engineering_config.include_metadata,
+                    include_normalized_optical=self.config.feature_engineering_config.include_normalized_optical,
+                    include_directional_vote=self.config.feature_engineering_config.include_directional_vote,
+                    include_conditional_features=self.config.feature_engineering_config.include_conditional_features,
+                    conditional_feature_specs=self.config.feature_engineering_config.conditional_feature_specs,
                 )
                 self.feature_engineer.fit(X)
             # Compute features
@@ -311,6 +315,7 @@ class Trainer:
             seed = self.config.random_seed + i * 1000
 
             # Create a temporary feature engineer with simulation enabled
+            # Create a temporary feature engineer with simulation enabled
             temp_feature_engineer = AquacultureFeatureEngineer(
                 simulate_mask=True,  # Always simulate for validation realizations
                 random_state=seed,
@@ -324,6 +329,8 @@ class Trainer:
                 include_metadata=self.config.feature_engineering_config.include_metadata,
                 include_normalized_optical=self.config.feature_engineering_config.include_normalized_optical,
                 include_directional_vote=self.config.feature_engineering_config.include_directional_vote,
+                include_conditional_features=self.config.feature_engineering_config.include_conditional_features,
+                conditional_feature_specs=self.config.feature_engineering_config.conditional_feature_specs,
             )
 
             # Process the data through the temporary feature engineer
@@ -381,6 +388,7 @@ class Trainer:
             seed = self.config.random_seed + i * 1000 + 10000  # Offset to avoid conflicts
 
             # Create a temporary feature engineer with simulation enabled
+            # Create a temporary feature engineer with simulation enabled
             temp_feature_engineer = AquacultureFeatureEngineer(
                 simulate_mask=True,  # Always simulate for validation realizations
                 random_state=seed,
@@ -394,6 +402,8 @@ class Trainer:
                 include_metadata=self.config.feature_engineering_config.include_metadata,
                 include_normalized_optical=self.config.feature_engineering_config.include_normalized_optical,
                 include_directional_vote=self.config.feature_engineering_config.include_directional_vote,
+                include_conditional_features=self.config.feature_engineering_config.include_conditional_features,
+                conditional_feature_specs=self.config.feature_engineering_config.conditional_feature_specs,
             )
 
             # Process the data through the temporary feature engineer
@@ -486,6 +496,8 @@ class Trainer:
             include_metadata=self.config.feature_engineering_config.include_metadata,
             include_normalized_optical=self.config.feature_engineering_config.include_normalized_optical,
             include_directional_vote=self.config.feature_engineering_config.include_directional_vote,
+            include_conditional_features=self.config.feature_engineering_config.include_conditional_features,
+            conditional_feature_specs=self.config.feature_engineering_config.conditional_feature_specs
         )
         # Prepare training data for feature engineering (handle 2D to 3D conversion if needed)
         X_train_val_processed = X_train_val_raw.copy()

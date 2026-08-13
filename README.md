@@ -31,6 +31,7 @@ This documentation is essential for understanding the sophisticated components o
 - **Comprehensive Evaluation**: Competition metric (0.6×F1 + 0.4×ROC-AUC) and standard metrics
 - **Model Interpretation**: SHAP values, feature importance, and visualization tools
 - **Directional Vote Features**: Novel temporal features based on the directional interaction of water and vegetation indices (MNDWI, NDWI, NDRE2, NDVI) that are robust to distribution shifts
+- **Conditional/Threshold-Based Features**: Novel feature group that applies thresholding logic to existing temporal statistics features (e.g., NDWI_max, MNDWI_std) to create binary or ternary features based on user-defined thresholds
 - **Production Ready**: Type hints, documentation, logging, and error handling
 
 ### Feature Selection
