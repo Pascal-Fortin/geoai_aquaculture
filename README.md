@@ -94,7 +94,7 @@ See the Jupyter notebooks in the `notebooks/` directory for step-by-step tutoria
 
 ## Testing
 
-The project includes a test suite to verify functionality. Tests are located in the `tests/` directory.
+The project includes a test suite to verify functionality. Tests are located in the `tests/` directory and `aquaculture/tests/` directory.
 
 ### Running Tests
 
@@ -110,12 +110,15 @@ Alternatively, you can run individual test files:
 python -m unittest tests.test_logging
 python -m unittest tests.test_trainer
 python -m unittest tests.test_basic
+python -m unittest tests.test_inference_verification
+python -m unittest aquaculture.test_inference_verification
 ```
 
 Or use the built-in test discovery:
 
 ```bash
 python -m unittest discover -s tests
+python -m unittest discover -s aquaculture/tests
 ```
 
 The test suite covers:
@@ -124,12 +127,17 @@ The test suite covers:
 - Metrics calculation
 - Trainer initialization and basic workflow
 - Logging functionality (file and console output)
+- Inference verification (feature name consistency, masking behavior, component usage)
 
 ### Test Structure
 
 - `test_basic.py`: Tests for core utilities and metrics
 - `test_trainer.py`: Tests for the main training pipeline
 - `test_logging.py`: Tests for the configurable logging system
+- `test_inference_verification.py`: Tests for inference improvements (feature name loading, validation, config saving)
+- `aquaculture/tests/test_feature_engineering.py`: Tests for the feature engineering component
+- `aquaculture/tests/test_feature_selection.py`: Tests for the feature selection component
+- `aquaculture/tests/test_inference_verification.py`: Tests for aquaculture-specific inference behavior
 
 ## Key Features
 

@@ -1794,6 +1794,43 @@ Where:
 
 Implemented in: `inference.py:InferencePipeline.create_submission()` lines 186-210
 
+### 15.6 Inference Verification and Validation
+
+To ensure the integrity and correctness of the inference process, the framework includes several verification mechanisms that confirm consistency between training and inference:
+
+#### 15.6.1 Feature Name Verification
+- **Direct Loading**: Feature names are loaded directly from `feature_names.json` saved during training
+- **Fallback Mechanism**: If the JSON file is unavailable, feature names are reconstructed from transformed data (with logging)
+- **Validation Check**: Inferred feature names are compared against training feature names to detect mismatches
+- **Mismatch Reporting**: Detailed reporting shows which features are present in training but missing from inference, and vice versa
+- **Implementation**: Enhanced inference notebook with explicit feature name loading and validation
+
+#### 15.6.2 Component Consistency Verification
+- **Pre-fitted Components**: Inference uses the exact same `AquacultureFeatureEngineer` and `FeatureSelector` instances that were fitted on training data
+- **No Re-fitting**: Components are not re-fitted on test data, preventing data leakage and ensuring consistency
+- **Transformation Consistency**: The same transformation pipeline (feature engineering → selection) is applied to both training and test data
+- **Verification**: Confirmed through unit tests that check component usage and transformation consistency
+
+#### 15.6.3 Configuration Preservation
+- **Separate Config File**: Feature engineering configuration is saved as `feature_engineering_config.json` for easy verification
+- **Easy Review**: JSON format allows quick visual inspection of inference parameters
+- **Traceability**: Enables reproducibility audits by checking exactly which configuration was used
+- **Implementation**: Added `_save_feature_engineering_config()` method to `Trainer` class
+
+#### 15.6.4 Testing Framework
+- **Unit Tests**: Comprehensive test suite validates inference verification mechanisms
+- **Test Coverage**: 
+  - Feature name loading from JSON
+  - Feature name validation (match/mismatch detection)
+  - Feature engineering configuration saving
+  - Pre-fitted component usage for inference
+  - Masking behavior verification (training vs inference)
+- **Test Locations**: 
+  - `tests/test_inference_verification.py`
+  - `aquaculture/tests/test_inference_verification.py`
+
+These verification mechanisms work together to ensure that the inference process produces reliable, consistent results that match the training conditions, eliminating a common source of discrepancies between training performance and actual competition scores.
+
 ## 16. Training vs Validation vs Test
 
 ### Comparison Matrix
