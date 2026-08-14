@@ -4,6 +4,7 @@ spatial_blocks/
 
 # Notebook data files
 notebooks/*.kml
+notebooks/catboost_info
 
 # Code
 aquaculture/__pycache__
