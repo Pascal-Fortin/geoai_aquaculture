@@ -725,17 +725,17 @@ class Trainer:
                     'importance': shap_importance
                 }).sort_values('importance', ascending=False)
 
-                shap_importance_path = self.experiment_dir / "features" / "shap_feature_importance.csv"
+                shap_importance_path = self.experiment_dir / "explanations" / "shap_feature_importance.csv"
                 shap_importance_df.to_csv(shap_importance_path, index=False)
                 logger.info(f"SHAP feature importance saved to {shap_importance_path}")
 
                 # Also save SHAP values and feature names for later use in notebooks
-                shap_npz_path = self.experiment_dir / "shap_values.npz"
+                shap_npz_path = self.experiment_dir / "explanations" / "shap_values.npz"
                 np.savez(shap_npz_path, shap_values=shap_values, feature_names=self.feature_names)
                 logger.info(f"SHAP values and feature names saved to {shap_npz_path}")
 
                 # Generate and save SHAP plots
-                shap_plots_dir = self.experiment_dir / "plots" / "shap"
+                shap_plots_dir = self.experiment_dir / "explanations" / "shap"
                 shap_plots_dir.mkdir(parents=True, exist_ok=True)
 
                 # Import plotting functions

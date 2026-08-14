@@ -541,12 +541,12 @@ def save_shap_analysis(shap_values: np.ndarray, X: np.ndarray, feature_names: Li
     experiment_dir.mkdir(parents=True, exist_ok=True)
 
     # Save SHAP values and feature names for later use
-    shap_data_path = experiment_dir / "shap_values.npz"
+    shap_data_path = experiment_dir / "explanations" / "shap_values.npz"
     np.savez(shap_data_path, shap_values=shap_values, feature_names=feature_names)
 
     # Save feature importance
     importance_df = get_shap_feature_importance(shap_values, feature_names)
-    importance_path = experiment_dir / "shap_feature_importance.csv"
+    importance_path = experiment_dir / "explanations" / "shap_feature_importance.csv"
     importance_df.to_csv(importance_path, index=False)
 
     # Generate plots
@@ -557,7 +557,7 @@ def save_shap_analysis(shap_values: np.ndarray, X: np.ndarray, feature_names: Li
             continue
 
         try:
-            plot_path = experiment_dir / f"shap_summary_{plot_type}.png"
+            plot_path = experiment_dir / "explanations" / f"shap_summary_{plot_type}.png"
             plot_shap_summary(
                 shap_values=shap_values,
                 feature_names=feature_names,
@@ -579,7 +579,7 @@ def save_shap_analysis(shap_values: np.ndarray, X: np.ndarray, feature_names: Li
         for i, feat_idx in enumerate(top_feature_indices):
             feature_name = feature_names[feat_idx]
             try:
-                plot_path = experiment_dir / f"shap_dependence_{feature_name}.png"
+                plot_path = experiment_dir / "explanations" / f"shap_dependence_{feature_name}.png"
                 plot_shap_dependence(
                     shap_values=shap_values,
                     feature_names=feature_names,
@@ -593,4 +593,4 @@ def save_shap_analysis(shap_values: np.ndarray, X: np.ndarray, feature_names: Li
     except ImportError:
         pass  # plot_shap_dependence might not be available
 
-    logger.info(f"SHAP analysis saved to {experiment_dir}")
+    logger.info(f"SHAP analysis saved to {experiment_dir / 'explanations'}")
