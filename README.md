@@ -93,11 +93,49 @@ geoai_aquaculture/
 
 ## Usage
 
-See the Jupyter notebooks in the `notebooks/` directory for step-by-step tutorials:
+See the Jupyter notebooks in the `notebooks/` directory for step-by-step tutorials that follow the standard machine learning pipeline:
 
-1. **01_train_model.ipynb**: Complete training pipeline with Stratified K-Fold CV
-2. **02_model_analysis.ipynb**: Model interpretation and analysis
-3. **03_inference.ipynb**: Making predictions on new data
+1. **01_train_model.ipynb**: Train the model using Stratified K-Fold Cross-Validation with Optuna hyperparameter optimization.
+2. **02_model_analysis.ipynb**: Analyze and interpret the trained model, including feature importance and SHAP values.
+3. **03_inference.ipynb**: Make predictions on new data using the trained model.
+
+### Standard Pipeline
+
+To follow the standard workflow:
+
+1. **Train**: Run `01_train_model.ipynb` to train and optimize your model. This will create experiment outputs in the `experiments/` directory.
+2. **Analyze**: Run `02_model_analysis.ipynb` on the latest experiment to evaluate model performance and interpret results.
+3. **Finalize**: Once satisfied with a model, copy the essential files from the experiment directory to the `models/` directory for long-term storage and easy access.
+4. **Inference**: Run `03_inference.ipynb`, pointing to the `models/` directory (or a specific experiment) to make predictions on new data.
+
+### Model Organization
+
+- **experiments/**: Contains timestamped subdirectories for each training run, including configurations, models, and artifacts.
+- **models/**: Intended for storing finalized models. For reliable inference, copy the essential files from a chosen experiment directory to `models/`.
+
+#### Essential Files for Inference
+To ensure the inference notebook works without needing to reconstruct components, copy the following from an experiment directory:
+- `trainer.pkl` (contains the trained model, feature engineer, and feature selector)
+- `config.yaml` (training configuration)
+- `features/feature_names.json` (list of feature names used during training)
+- Optionally, the `models/` subdirectory (contains `best_model.pkl` and `optuna_study.pkl`) if you wish to retain separate artifacts.
+
+#### Copying Instructions
+You can copy the entire experiment directory for simplicity, or copy only the essential files:
+
+```bash
+# Copy entire experiment directory (recommended)
+cp -r experiments/<experiment_timestamp>/* models/
+
+# Or copy only essential files:
+mkdir -p models/<experiment_timestamp>
+cp experiments/<experiment_timestamp>/trainer.pkl models/<experiment_timestamp>/
+cp experiments/<experiment_timestamp>/config.yaml models/<experiment_timestamp>/
+mkdir -p models/<experiment_timestamp>/features
+cp experiments/<experiment_timestamp>/features/feature_names.json models/<experiment_timestamp>/features/
+# Optionally copy models subdirectory
+cp -r experiments/<experiment_timestamp>/models models/<experiment_timestamp>/
+```
 
 ## Testing
 
