@@ -253,8 +253,11 @@ Features are generated in deterministic order:
 3. SAR features (VH, VV, VH_VV_ratio, VH_VV_diff) × 12 months
 4. Cross-sensor features (if enabled) × 12 months
 5. Temporal statistics (mean, std, min, max, amplitude, slope) × all features
-6. Metadata features (window_length, start_month, end_month, n_optical_obs, fraction_optical, monthly_obs_flags)
-7. Directional vote features (fraction_positive, fraction_ge_2, fraction_eq_4, mean, min, max) - based on signs of water and vegetation indices
+6. **Conditional vote feature (sum of all conditional features) - if enabled**
+7. Metadata features (window_length, start_month, end_month, n_optical_obs, fraction_optical, monthly_obs_flags)
+8. Directional vote features (fraction_positive, fraction_ge_2, fraction_eq_4, mean, min, max) - based on signs of water and vegetation indices
+9. Conditional/threshold-based features - if enabled
+10. Conditional vote * directional mean feature - if both conditional and directional vote features are enabled
 
 Implemented in: `feature_engineering.py:_build_feature_names()` lines 200-248
 
