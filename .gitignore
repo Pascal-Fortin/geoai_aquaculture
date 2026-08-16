@@ -17,6 +17,7 @@ __pycache__
 # IDE and OS
 .claude/
 .DS_Store
+CLAUDE.md
 
 # Output directories
 experiments/
