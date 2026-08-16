@@ -282,10 +282,182 @@ def test_conditional_features_invalid_specs():
     print("Conditional features invalid specs test passed!")
 
 
+def test_conditional_vote_feature():
+    """Test conditional_vote feature (sum of all conditional features)."""
+    # Create sample data: 3 samples, 12 months, 12 bands
+    np.random.seed(42)
+    X = np.random.rand(3, 12, 12).astype(np.float64)
+
+    # Introduce some missing values (-9999) to simulate real data
+    X[0, 0, 2] = -9999.0  # Missing blue band in first sample, first month
+    X[1, 5, 5] = -9999.0  # Missing RE1 in second sample, sixth month
+
+    # Create feature engineer with conditional features enabled
+    fe = AquacultureFeatureEngineer(
+        simulate_mask=False,  # No masking for deterministic test
+        random_state=42,
+        include_optical=True,
+        include_sar=True,
+        include_temporal_statistics=True,  # Need temporal stats for conditional features
+        include_cross_sensor_features=True,
+        include_metadata=False,
+        include_conditional_features=True,
+        include_directional_vote=True,  # Need this for the second feature test
+        conditional_feature_specs=[
+            {
+                "base_feature": "NDWI_max",
+                "thresholds": [0.0],
+                "outputs": [0, 1]  # NDWI_max < 0 -> 0, NDWI_max >= 0 -> 1
+            },
+            {
+                "base_feature": "MNDWI_std",
+                "thresholds": [0.1, 0.3],
+                "outputs": [-1, 0, 1]  # <0.1 -> -1, [0.1,0.3) -> 0, >=0.3 -> 1
+            }
+        ]
+    )
+
+    # Fit and transform
+    fe.fit(X)
+    X_transformed = fe.transform(X, training=False)
+
+    # Check that we have the expected features
+    feature_names = list(fe.get_feature_names_out())
+
+    # Should have the conditional features
+    assert "NDWI_max_cond_0" in feature_names, "Expected NDWI_max_cond_0 feature not found"
+    assert "MNDWI_std_cond_1" in feature_names, "Expected MNDWI_std_cond_1 feature not found"
+
+    # Should have the conditional_vote feature (sum of conditional features)
+    assert "conditional_vote" in feature_names, "Expected conditional_vote feature not found"
+
+    # Should have the conditional_vote_directional_mean feature
+    assert "conditional_vote_directional_mean" in feature_names, "Expected conditional_vote_directional_mean feature not found"
+
+    # Get indices
+    ndwi_max_cond_idx = feature_names.index("NDWI_max_cond_0")
+    mndwi_std_cond_idx = feature_names.index("MNDWI_std_cond_1")
+    conditional_vote_idx = feature_names.index("conditional_vote")
+    conditional_vote_dir_mean_idx = feature_names.index("conditional_vote_directional_mean")
+
+    # Get values
+    ndwi_max_cond_values = X_transformed.iloc[:, ndwi_max_cond_idx].values
+    mndwi_std_cond_values = X_transformed.iloc[:, mndwi_std_cond_idx].values
+    conditional_vote_values = X_transformed.iloc[:, conditional_vote_idx].values
+    conditional_vote_dir_mean_values = X_transformed.iloc[:, conditional_vote_dir_mean_idx].values
+
+    # Verify conditional_vote equals sum of conditional features
+    expected_sum = ndwi_max_cond_values + mndwi_std_cond_values
+    np.testing.assert_array_equal(conditional_vote_values, expected_sum,
+                                  "conditional_vote should equal sum of conditional features")
+
+    # Get directional vote mean for verification of the second feature
+    directional_vote_mean_idx = feature_names.index("directional_vote_mean")
+    directional_vote_mean_values = X_transformed.iloc[:, directional_vote_mean_idx].values
+
+    # Verify conditional_vote_directional_mean equals conditional_vote * directional_vote_mean
+    expected_product = conditional_vote_values * directional_vote_mean_values
+    np.testing.assert_array_equal(conditional_vote_dir_mean_values, expected_product,
+                                  "conditional_vote_directional_mean should equal conditional_vote * directional_vote_mean")
+
+    print("Conditional vote feature test passed!")
+
+
+def test_conditional_vote_feature_without_directional_vote():
+    """Test conditional_vote feature when directional_vote is disabled."""
+    # Create sample data: 2 samples, 12 months, 12 bands
+    np.random.seed(42)
+    X = np.random.rand(2, 12, 12).astype(np.float64)
+
+    # Create feature engineer with conditional features enabled but directional vote disabled
+    fe = AquacultureFeatureEngineer(
+        simulate_mask=False,
+        random_state=42,
+        include_optical=True,
+        include_sar=True,
+        include_temporal_statistics=True,
+        include_cross_sensor_features=True,
+        include_metadata=False,
+        include_conditional_features=True,
+        include_directional_vote=False,  # Disabled
+        conditional_feature_specs=[
+            {
+                "base_feature": "NDWI_max",
+                "thresholds": [0.0],
+                "outputs": [0, 1]
+            }
+        ]
+    )
+
+    # Fit and transform
+    fe.fit(X)
+    X_transformed = fe.transform(X, training=False)
+
+    # Check that we have the expected features
+    feature_names = list(fe.get_feature_names_out())
+
+    # Should have the conditional feature
+    assert "NDWI_max_cond_0" in feature_names
+
+    # Should have the conditional_vote feature
+    assert "conditional_vote" in feature_names
+
+    # Should NOT have the conditional_vote_directional_mean feature (requires directional_vote)
+    assert "conditional_vote_directional_mean" not in feature_names
+
+    # Get indices
+    ndwi_max_cond_idx = feature_names.index("NDWI_max_cond_0")
+    conditional_vote_idx = feature_names.index("conditional_vote")
+
+    # Get values
+    ndwi_max_cond_values = X_transformed.iloc[:, ndwi_max_cond_idx].values
+    conditional_vote_values = X_transformed.iloc[:, conditional_vote_idx].values
+
+    # Verify conditional_vote equals the conditional feature (since there's only one)
+    np.testing.assert_array_equal(conditional_vote_values, ndwi_max_cond_values,
+                                  "conditional_vote should equal the single conditional feature when only one exists")
+
+    print("Conditional vote feature without directional vote test passed!")
+
+
+def test_conditional_vote_feature_disabled():
+    """Test that when conditional features are disabled, no conditional_vote features are created."""
+    # Create sample data
+    np.random.seed(42)
+    X = np.random.rand(2, 12, 12).astype(np.float64)
+
+    # Create feature engineer with conditional features disabled
+    fe = AquacultureFeatureEngineer(
+        simulate_mask=False,
+        random_state=42,
+        include_optical=True,
+        include_sar=True,
+        include_temporal_statistics=True,
+        include_cross_sensor_features=True,
+        include_metadata=False,
+        include_conditional_features=False,  # Disabled
+        include_directional_vote=True
+    )
+
+    fe.fit(X)
+    X_transformed = fe.transform(X, training=False)
+
+    # Check that we have NO conditional vote features
+    feature_names = list(fe.get_feature_names_out())
+    conditional_vote_features = [f for f in feature_names if 'conditional_vote' in f]
+    assert len(conditional_vote_features) == 0, f"Found unexpected conditional vote features: {conditional_vote_features}"
+
+    print("Conditional vote features disabled test passed!")
+
+
 if __name__ == "__main__":
     # Run the conditional features tests
     test_conditional_features()
     test_conditional_features_disabled()
     test_conditional_features_same_base_different_thresholds()
     test_conditional_features_invalid_specs()
-    print("All conditional features tests passed!")
+    # Run the new conditional vote feature tests
+    test_conditional_vote_feature()
+    test_conditional_vote_feature_without_directional_vote()
+    test_conditional_vote_feature_disabled()
+    print("All conditional features and conditional vote tests passed!")

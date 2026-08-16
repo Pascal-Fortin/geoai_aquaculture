@@ -101,6 +101,12 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
         # Placeholder for conditional feature statistics (to be computed during transform)
         self._conditional_features = None
 
+        # Placeholder for conditional vote feature (to be computed during transform)
+        self._conditional_vote = None
+
+        # Placeholder for conditional vote * directional mean feature
+        self._conditional_vote_directional_mean = None
+
         # Internal random generator
         self._rng: Optional[np.random.Generator] = None
 
@@ -279,6 +285,10 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
                 for stat in self._stat_names:
                     feature_names.append(f"{fname}_{stat}")
 
+        # Conditional vote feature (sum of all conditional features)
+        if self.include_conditional_features and len(self.conditional_feature_specs) > 0:
+            feature_names.append("conditional_vote")
+
         # Metadata features
         if self.include_metadata:
             feature_names.extend(self._metadata_names)
@@ -309,6 +319,11 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
                         if statistic in self._stat_names:
                             # Each valid spec generates exactly one conditional feature
                             feature_names.append(f"{base_feature}_cond_{i}")
+
+        # Conditional vote * directional mean feature
+        if (self.include_conditional_features and len(self.conditional_feature_specs) > 0 and
+            self.include_directional_vote):
+            feature_names.append("conditional_vote_directional_mean")
 
         self.feature_names_out_ = feature_names
 
@@ -731,6 +746,13 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
             )
             feature_arrays.append(meta_features)
 
+        # Compute conditional_vote feature (sum of all conditional features)
+        if self.include_conditional_features and self._conditional_features is not None:
+            # Use np.sum for consistency with fallback and to avoid potential issues
+            self._conditional_vote = np.sum(self._conditional_features, axis=1)
+            cv_column = self._conditional_vote.reshape(-1, 1)
+            feature_arrays.append(cv_column)  # Reshape for concatenation
+            
         # Add directional vote features if computed
         if self.include_directional_vote and self._directional_vote_stats is not None:
             feature_arrays.append(self._directional_vote_stats)
@@ -738,6 +760,15 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
         # Add conditional features if computed
         if self.include_conditional_features and self._conditional_features is not None:
             feature_arrays.append(self._conditional_features)
+
+        # Compute conditional_vote_directional_mean feature
+        if (self.include_conditional_features and self._conditional_features is not None and
+            self.include_directional_vote and self._directional_vote_stats is not None):
+            # directional_vote_mean is at index 3 in _directional_vote_stats
+            # (fraction_positive, fraction_ge_2, fraction_eq_4, mean, min, max)
+            directional_vote_mean = self._directional_vote_stats[:, 3]  # shape: (n_samples,)
+            self._conditional_vote_directional_mean = self._conditional_vote * directional_vote_mean
+            feature_arrays.append(self._conditional_vote_directional_mean.reshape(-1, 1))  # Reshape for concatenation
 
         # Now combine all feature arrays horizontally
         if feature_arrays:
@@ -958,11 +989,17 @@ class AquacultureFeatureEngineer(BaseEstimator, TransformerMixin):
             # Directional vote features
             elif name in directional_vote_set:
                 groups['directional_vote'].append(i)
-            # Conditional features: {base_feature}_cond_{index} where index is integer
+            # Conditional vote feature (sum of all conditional features)
+            elif name == "conditional_vote":
+                groups['other'].append(i)
+            # Conditional/threshold-based features: {base_feature}_cond_{index} where index is integer
             elif '_cond_' in name:
                 parts = name.split('_')
                 if len(parts) >= 3 and parts[-2] == 'cond' and parts[-1].isdigit():
                     groups['conditional'].append(i)
+            # Conditional vote * directional mean feature
+            elif name == "conditional_vote_directional_mean":
+                groups['other'].append(i)
             # Temporal statistics: ends with _{stat}
             elif any(name.endswith(f"_{stat}") for stat in stat_set):
                 # Check if this is a temporal stat of a normalized optical feature
