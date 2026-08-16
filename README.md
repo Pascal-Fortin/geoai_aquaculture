@@ -46,6 +46,12 @@ The aquaculture package includes flexible feature selection utilities that allow
 - Combine multiple selection criteria with include/exclude logic
 - Preserve the original feature engineering pipeline while selecting subsets for modeling
 
+**Enhanced Integration**: Feature selection is now properly integrated throughout the training pipeline, ensuring consistent application during:
+- Cross-validation folds in hyperparameter optimization
+- Final model training on full training data  
+- Hold-out test set evaluation
+- Inference on new data
+
 These capabilities enable efficient model training, improved interpretability, and reduced overfitting by working with relevant feature subsets while maintaining access to the complete feature set for analysis.
 
 ## Project Structure

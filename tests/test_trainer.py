@@ -63,6 +63,132 @@ def test_predict_and_predict_proba_use_same_features_when_training_true():
     X_feat_shift, _ = trainer._prepare_data(X_shift, np.zeros(X_shift.shape[0]), training=True)
     assert not np.array_equal(X_feat, X_feat_shift), "Features should change when input changes"
 
+
+def test_feature_selection_used_in_cv_and_test_data():
+    """
+    Test that feature selector is used for CV folds and test data when feature selection is enabled.
+    """
+    # Create a small deterministic dataset for testing
+    rng = np.random.default_rng(42)
+    n_samples = 30
+
+    # Create data in the expected format: (n_samples, 12, 12)
+    X = rng.normal(size=(n_samples, 12, 12))
+
+    # Replace some values with -9999 to simulate missing data
+    missing_mask = rng.random(X.shape) < 0.1  # 10% missing
+    X[missing_mask] = -9999
+
+    # Create binary labels
+    y = rng.integers(0, 2, size=n_samples)
+
+    # Create a training config with feature selection enabled
+    config = TrainingConfig(
+        random_seed=42,
+        n_trials=2,  # Keep small for fast testing
+        n_splits=3,  # 3-fold CV
+        model_type='lightgbm',
+        feature_selection_enabled=True,
+        feature_selection_method='groups',
+        feature_selection_kwargs={'groups': ['temporal', 'metadata']}  # Select temporal and metadata features
+    )
+
+    # Create trainer
+    trainer = Trainer(config)
+
+    # Check that feature selector is None before fitting (depends on fitted feature engineer)
+    assert trainer.feature_selector is None, "Feature selector should be None before fitting"
+    assert trainer.selected_feature_names is None, "Selected feature names should be None before fitting"
+
+    # Fit the trainer (this should use feature selection in CV and for test data)
+    trainer.fit(X, y)
+
+    # Check that feature selector was created after fitting
+    assert trainer.feature_selector is not None, "Feature selector should be created when enabled"
+    assert trainer.selected_feature_names is not None, "Selected feature names should be stored when enabled"
+
+    # Check that we have selected feature names
+    assert len(trainer.selected_feature_names) > 0, "Should have selected some features"
+
+    # Verify that the model was trained with the selected features
+    if hasattr(trainer.model, 'n_features_in_'):
+        assert trainer.model.n_features_in_ == len(trainer.selected_feature_names), \
+            f"Model expects {trainer.model.n_features_in_} features but trainer has {len(trainer.selected_feature_names)} selected features"
+
+    # Test prediction to make sure it works
+    preds = trainer.predict(X[:5])  # Predict on first 5 samples
+    assert preds.shape == (5,), f"Predictions should have shape (5,), got {preds.shape}"
+
+    # Test predict_proba
+    probs = trainer.predict_proba(X[:5])  # Predict probabilities on first 5 samples
+    assert probs.shape == (5, 2), f"Probabilities should have shape (5, 2), got {probs.shape}"
+
+    # Verify that predictions are valid
+    assert np.all(preds >= 0) and np.all(preds <= 1), "Predictions should be between 0 and 1"
+    assert np.allclose(np.sum(probs, axis=1), 1.0), "Probabilities should sum to 1 for each sample"
+
+
+def test_feature_selection_disabled_works_correctly():
+    """
+    Test that everything works correctly when feature selection is disabled.
+    """
+    # Create a small deterministic dataset for testing
+    rng = np.random.default_rng(42)
+    n_samples = 30
+
+    # Create data in the expected format: (n_samples, 12, 12)
+    X = rng.normal(size=(n_samples, 12, 12))
+
+    # Replace some values with -9999 to simulate missing data
+    missing_mask = rng.random(X.shape) < 0.1  # 10% missing
+    X[missing_mask] = -9999
+
+    # Create binary labels
+    y = rng.integers(0, 2, size=n_samples)
+
+    # Create a training config with feature selection disabled
+    config = TrainingConfig(
+        random_seed=42,
+        n_trials=2,  # Keep small for fast testing
+        n_splits=3,  # 3-fold CV
+        model_type='lightgbm',
+        feature_selection_enabled=False  # Disabled
+    )
+
+    # Create trainer
+    trainer = Trainer(config)
+
+    # Check that feature selector was not created
+    assert trainer.feature_selector is None, "Feature selector should be None when disabled"
+    assert trainer.selected_feature_names is None, "Selected feature names should be None when disabled"
+
+    # Fit the trainer
+    trainer.fit(X, y)
+
+    # Check that we have all feature names (no selection)
+    assert trainer.feature_names is not None, "Feature names should be stored when selection is disabled"
+    assert len(trainer.feature_names) > 0, "Should have feature names"
+
+    # Verify that the model was trained with all features
+    if hasattr(trainer.model, 'n_features_in_') and trainer.feature_names is not None:
+        assert trainer.model.n_features_in_ == len(trainer.feature_names), \
+            f"Model expects {trainer.model.n_features_in_} features but trainer has {len(trainer.feature_names)} features"
+
+    # Test prediction
+    preds = trainer.predict(X[:5])  # Predict on first 5 samples
+    assert preds.shape == (5,), f"Predictions should have shape (5,), got {preds.shape}"
+
+    # Test predict_proba
+    probs = trainer.predict_proba(X[:5])  # Predict probabilities on first 5 samples
+    assert probs.shape == (5, 2), f"Probabilities should have shape (5, 2), got {probs.shape}"
+
+    # Verify that predictions are valid
+    assert np.all(preds >= 0) and np.all(preds <= 1), "Predictions should be between 0 and 1"
+    assert np.allclose(np.sum(probs, axis=1), 1.0), "Probabilities should sum to 1 for each sample"
+
+
 if __name__ == "__main__":
     test_predict_and_predict_proba_use_same_features_when_training_true()
-    print("Test passed.")
+    test_feature_selection_used_in_cv_and_test_data()
+    test_feature_selection_disabled_works_correctly()
+    print("All tests passed.")

@@ -62,10 +62,12 @@ class Trainer:
         self.study = None
         self.experiment_dir = None
         self.feature_names = None
+        self.selected_feature_names = None
         self.classes_ = None
         self._last_X = None
         self._last_X_features = None
         self._last_training = None
+        self.fec = None
 
         # Set random seeds for reproducibility
         self._set_random_seeds(config.random_seed)
@@ -374,6 +376,11 @@ class Trainer:
             # Fit and transform the data with the temporary engineer
             temp_feature_engineer.fit(X_processed)
             X_realized = temp_feature_engineer.transform(X_processed, training=True)
+            # Apply feature selection if enabled
+            if self.feature_selector is not None:
+                # Select only the selected features from the engineered data
+                selected_feature_names = self.feature_selector.get_feature_names_out()
+                X_realized = X_realized[selected_feature_names]
             realizations.append((X_realized.values, y))
 
             logger.debug(f"Generated validation realization {i+1}/{self.config.n_validation_realizations}")
@@ -447,6 +454,11 @@ class Trainer:
             # Fit and transform the data with the temporary engineer
             temp_feature_engineer.fit(X_processed)
             X_realized = temp_feature_engineer.transform(X_processed, training=True)
+            # Apply feature selection if enabled
+            if self.feature_selector is not None:
+                # Select only the selected features from the engineered data
+                selected_feature_names = self.feature_selector.get_feature_names_out()
+                X_realized = X_realized[selected_feature_names]
             realizations.append((X_realized.values, y))
 
             logger.debug(f"Generated validation realization {i+1}/{self.config.n_validation_realizations} for fold")
@@ -537,7 +549,25 @@ class Trainer:
         logger.info(f"Training data (for CV): {X_train_val_raw.shape}, Test set (held out): {X_test_raw.shape}")
         logger.info(f"Class distribution (training): {np.bincount(y_train_val)}")
 
-        # Prepare features for TEST dataset (held out for final evaluation)
+        # Create feature selector if enabled, to get selected feature names
+        if self.config.feature_selection_enabled:
+            from aquaculture.feature_selection import FeatureSelector
+            self.feature_selector = FeatureSelector(
+                self.feature_engineer,
+                selection_method=self.config.feature_selection_method,
+                **self.config.feature_selection_kwargs
+            )
+            logger.info(f"Feature selector created with method '{self.config.feature_selection_method}' "
+                        f"and kwargs {self.config.feature_selection_kwargs}")
+            self.selected_feature_names = list(self.feature_selector.get_feature_names_out())
+            logger.info(f"Selected {len(self.selected_feature_names)} features for training.")
+        else:
+            self.feature_selector = None
+            self.selected_feature_names = None
+        # Store fec for later use
+        self.fec = self.config.feature_engineering_config
+
+# Prepare features for TEST dataset (held out for final evaluation)
         X_features_test, _ = self._prepare_data(X_test_raw, y_test, training=False)
 
         # Set up cross-validation
@@ -591,6 +621,7 @@ class Trainer:
             n_validation_realizations=self.config.n_validation_realizations,
             n_splits=n_splits,
             feature_engineer_config=self.config.feature_engineering_config,
+            selected_feature_names=self.selected_feature_names,
             study_name=f"aquaculture_{self.config.model_type}_optimization",
             storage=None  # Could be made configurable
         )

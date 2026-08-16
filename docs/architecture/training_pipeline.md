@@ -1051,10 +1051,12 @@ By default, feature selection is disabled (`feature_selection_enabled = False`),
 #### How It Works
 When feature selection is enabled:
 1. The feature engineering pipeline generates all possible features as usual
-2. A `FeatureSelector` is created based on the configuration in `TrainingConfig`
-3. The selector is applied to choose the desired subset of features for modeling
-4. Models are trained on the selected feature subset
-5. Full feature names are still accessible via `trainer.feature_names` for reference
+2. A `FeatureSelector` is created based on the configuration in `TrainingConfig` after the feature engineer is fitted
+3. Selected feature names are stored and used consistently throughout the pipeline
+4. **During Cross-Validation**: For each fold in Optuna optimization, temporary feature engineers are used to generate features, and the same feature selection is applied to ensure consistent feature subsets across all folds and trials
+5. **Test Data Processing**: The hold-out test set undergoes the same feature selection process as training data
+6. Models are trained on the selected feature subset
+7. Full feature names are still accessible via `trainer.feature_names` for reference
 
 #### Usage Examples
 To enable and configure feature selection, modify the `TrainingConfig` before creating the `Trainer`:
@@ -1090,6 +1092,7 @@ trainer = Trainer(config)
 - **Consistent interface**: Works seamlessly with existing training pipeline
 - **Flexible configuration**: Easy to experiment with different feature selection strategies
 - **Preserves analysis capabilities**: Full feature set still available via the feature engineer for debugging and analysis
+- **Pipeline Consistency**: Feature selection is applied uniformly across CV folds, training, test data, and inference
 
 ## 11. Model Training
 

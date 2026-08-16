@@ -74,7 +74,8 @@ def create_objective_function(X_train: np.ndarray, y_train: np.ndarray,
                             model_type: str, random_state: int = 42,
                             n_validation_realizations: int = 1,
                             n_splits: int = 5,
-                            feature_engineer_config = None) -> Callable[[optuna.Trial], float]:
+                            feature_engineer_config = None,
+                            selected_feature_names: list = None) -> Callable[[optuna.Trial], float]:
     """
     Create an objective function for Optuna optimization with Stratified K-Fold CV.
 
@@ -98,6 +99,8 @@ def create_objective_function(X_train: np.ndarray, y_train: np.ndarray,
         Number of CV folds
     feature_engineer_config : aquaculture.config.AquacultureConfig, optional
         Configuration for the feature engineering pipeline
+    selected_feature_names : list of str, optional
+        List of feature names to select (if feature selection is enabled)
 
     Returns
     -------
@@ -178,13 +181,15 @@ def create_objective_function(X_train: np.ndarray, y_train: np.ndarray,
                 X_fold_val = val_features_list[fold_idx]  # Already processed features
                 y_fold_val = val_labels_list[fold_idx]
 
-                # Handle feature_engineer_config - provide default if not passed
-                if feature_engineer_config is None:
+                # Handle feature_engineer_config - use passed-in fec if available, otherwise create default
+                # Handle feature_engineer_config - create local fec from passed-in config or create default
+                if feature_engineer_config is not None:
+                    # Use the passed-in config
+                    fec = feature_engineer_config
+                else:
                     # Import here to avoid circular imports
                     from aquaculture.config import AquacultureConfig
                     fec = AquacultureConfig()
-                else:
-                    fec = feature_engineer_config
 
                 # Apply feature engineering to training data for this trial
                 # Use a different seed for each trial to ensure different realizations
@@ -222,10 +227,26 @@ def create_objective_function(X_train: np.ndarray, y_train: np.ndarray,
                     )
 
                 feature_engineer_for_trial.fit(X_fold_train_processed)
-                X_fold_train_features = feature_engineer_for_trial.transform(X_fold_train_processed, training=True).values  # Convert to numpy array for consistency
+                X_fold_train_features_all = feature_engineer_for_trial.transform(X_fold_train_processed, training=True).values  # Convert to numpy array for consistency
 
-                # Validation features are already precomputed (2D)
-                X_fold_val_features = X_fold_val  # Already processed
+                # Apply feature selection if specified
+                if selected_feature_names is not None:
+                    # Create a temporary DataFrame to select columns by name
+                    # We need to get the feature names from the engineer
+                    all_feature_names = feature_engineer_for_trial.get_feature_names_out()
+                    # Find indices of selected features
+                    selected_indices = [i for i, name in enumerate(all_feature_names) if name in selected_feature_names]
+                    # Select only the desired features
+                    if selected_indices:
+                        X_fold_train_features = X_fold_train_features_all[:, selected_indices]
+                    else:
+                        # If no matching features, use empty array
+                        X_fold_train_features = np.empty((X_fold_train_features_all.shape[0], 0))
+                else:
+                    X_fold_train_features = X_fold_train_features_all
+
+                # Validation features are already precomputed and feature-selected (2D)
+                X_fold_val_features = X_fold_val  # Already processed and feature-selected
 
                 # Train model
                 model.fit(X_fold_train_features, y_fold_train)
@@ -264,6 +285,7 @@ def optimize_hyperparameters(X_train: np.ndarray, y_train: np.ndarray,
                            n_validation_realizations: int = 1,
                            n_splits: int = 5,
                            feature_engineer_config = None,
+                           selected_feature_names: list = None,
                            study_name: str = "aquaculture_optimization",
                            storage: Optional[str] = None) -> Tuple[optuna.Study, Dict[str, Any]]:
     """
@@ -293,6 +315,8 @@ def optimize_hyperparameters(X_train: np.ndarray, y_train: np.ndarray,
         Number of CV folds
     feature_engineer_config : aquaculture.config.AquacultureConfig, optional
         Configuration for the feature engineering pipeline
+    selected_feature_names : list of str, optional
+        List of feature names to select (if feature selection is enabled)
     study_name : str, default="aquaculture_optimization"
         Name for the Optuna study
     storage : str, optional
@@ -321,7 +345,8 @@ def optimize_hyperparameters(X_train: np.ndarray, y_train: np.ndarray,
         random_state=random_state,
         n_validation_realizations=n_validation_realizations,
         n_splits=n_splits,
-        feature_engineer_config=feature_engineer_config
+        feature_engineer_config=feature_engineer_config,
+        selected_feature_names=selected_feature_names
     )
 
     # Optimize
